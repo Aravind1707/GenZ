@@ -23,44 +23,17 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 
 ## Non-negotiable rules
 
-### Identity and membership
-
-- Customers authenticate with **mobile number + OTP**.
-- OTPs are server-generated, hashed, short-lived, attempt-limited and rate-limited.
+- Customers authenticate with mobile number + OTP; OTP is server-generated, hashed, short-lived, attempt-limited and rate-limited.
 - Customer session tokens are hashed and stored server-side in HttpOnly cookies.
-- Membership is evaluated server-side using active status and expiry.
-- Never trust browser `isMember`, member IDs, prices, totals, payment state, or staff roles.
-
-### Customer pricing
-
-**Active member:** show **only the member price**; never display the regular price.
-
-**Non-member:** show the regular price and member savings where appropriate.
-
-The server recalculates all final prices.
-
-### Food ordering
-
-Food can only be ordered from the customer site when tied to an eligible active gaming session/tab.
-
-Customer payment choices are exactly:
-
-1. **Pay Now** — Razorpay
-2. **Pay at Counter** — authorized staff marks the order paid
-
-There is no active wallet, GenZ Pay balance, food wallet, or “add food to gaming bill” flow.
-
-### Attribution
-
-```text
-CUSTOMER -> MEMBERSHIP
-CUSTOMER/GROUP -> BOOKING -> SESSION -> STATION
-SESSION -> PARTICIPANTS -> GAMING CHARGES
-SESSION -> FOOD ORDERS -> PAYMENTS
-PAYMENTS -> FINANCE / AUDIT
-```
-
-Every rupee must have an auditable transaction/ledger origin.
+- Membership is server-authoritative and active only when `active=TRUE` and `expires_at >= CURDATE()`.
+- Never trust browser membership, member IDs, prices, totals, payment state, station ownership or staff roles.
+- Active member UI shows **only member price**; regular price is hidden.
+- Non-member UI shows regular price and member savings.
+- Food payment choices are ONLY **Pay Now** and **Pay at Counter**.
+- Wallet/GenZ Pay/food wallet/add-food-to-gaming-bill are not active features.
+- Permanent station QR identifies equipment only and never grants authorization.
+- Preserve `customer -> participant -> session -> station -> order -> payment` attribution.
+- Every rupee needs an auditable transaction/ledger origin.
 
 ## Architecture
 
@@ -83,138 +56,75 @@ Every rupee must have an auditable transaction/ledger origin.
      Customer phones
 ```
 
-Stack:
+Stack: Next.js / React / TypeScript, MySQL + `mysql2`, server API routes, PWA-oriented interfaces and GitHub Actions CI.
 
-- Next.js / React / TypeScript
-- MySQL + `mysql2`
-- Server-side API routes
-- PWA-oriented customer/admin/kitchen interfaces
-- GitHub Actions CI
-
-The MySQL pool is **lazy-initialized**, so `npm run build` does not require a live database or production DB environment variables. Runtime database calls still require configured MySQL variables.
+The MySQL pool is lazy-initialized, so builds do not require a live database.
 
 ## Customer experience
 
-### Authentication
-
-```text
-Mobile -> OTP -> server verification -> customer lookup/create
-       -> active membership check -> correct pricing
-```
-
 ### Gaming
 
-Customer gaming is a price-list experience with:
-
-- Normal PC
-- Premium PC
-- PS5
-- PS4
-- PSVR
-- MOZA
-- station-aware QR flow
-- live participant billing
-- +15/+30/+60 minute extension
+Price-list categories: Normal PC, Premium PC, PS5, PS4, PSVR and MOZA. Customer flow supports station-aware QR, live participant billing and +15/+30/+60 minute extension.
 
 ### Station QR
 
-Permanent station QR codes identify equipment only, e.g. `PC-01`, `PS5-01`, `MOZA-01`.
+Permanent QR codes such as `PC-01`, `PS5-01` and `MOZA-01` identify equipment only.
 
 ```text
 QR station -> active session -> authenticated customer -> participant -> food order
 ```
 
-The QR itself grants no authorization.
-
 ### Food
 
-Food catalog, cart, server-side pricing, active-member eligibility, participant attribution, Pay Now and Pay at Counter are implemented. Customer order history, stock-aware ordering and realtime status remain production work.
+Catalog, cart, server-side pricing, active-member eligibility, participant attribution, Pay Now and Pay at Counter are implemented. Customer history, stock-aware ordering and realtime customer status remain.
 
 ## Admin operations
 
-### Sessions and live billing
+### Sessions and billing
 
-Implemented foundation:
+Implemented: live floor, station start, active/paused/ended sessions, pause/resume, participant search/add/leave, rate snapshots, grouping, live billing and authoritative live gaming totals in sessions/dashboard.
 
-- live floor
-- station-specific start
-- active/paused/ended sessions
-- pause/resume billing
-- participant search/add/leave
-- participant rate snapshots
-- grouping
-- live billing endpoint
-- **authoritative live gaming total in the sessions API and dashboard**
-- session extension protection
+### Group settlement
 
-The admin session total combines server-computed live gaming charges with food balance instead of relying on stale stored gaming balance while a session is active.
+Open groups support 2–20 active sessions with individual attribution. Settlement supports one payer, equal split, custom amounts, by PC/session, by food item, mixed gaming + food, partial settlement, overpayment protection and transaction-safe allocation.
 
-### Gaming billing
+Settlement records are stored in `group_settlements`, `group_settlement_payers` and `group_settlement_allocations`. Group close requires every group session to be ended and all outstanding money to be settled.
 
-Server-authoritative billing supports elapsed time, per-minute rounding, persisted pause periods, participant-specific join/leave intervals, member/non-member rate snapshots and finalization.
-
-### Groups and settlement
-
-Open groups support 2–20 active sessions while retaining individual attribution.
-
-The settlement engine supports:
-
-- one payer
-- equal split
-- custom payer amounts
-- by PC/session source
-- by food item source
-- mixed gaming + food settlement
-- partial settlement
-- overpayment protection
-- transaction-safe source allocation
-- settlement/payer/allocation records
-- finance ledger entry
-- close protection until all sessions are ended and all money is settled
-
-Group totals are calculated from live gaming billing plus unpaid/failed food, less previous settlement allocations.
-
-Settlement tables:
-
-- `group_settlements`
-- `group_settlement_payers`
-- `group_settlement_allocations`
-
-Group settlement UI currently records only captured staff payment methods: cash, UPI, card and other. A dedicated verified Razorpay group checkout remains future work.
+Only captured staff-recorded methods (cash, UPI, card, other) are accepted by the group settlement UI. Group Razorpay checkout remains future work.
 
 ### Bookings
 
-Implemented:
+Implemented: creation, station assignment, time validation, conflicts, cancellation, check-in, no-show, booking/session linkage and checked-in booking -> session handoff.
 
-- create
-- station assignment
-- time range validation
-- conflict detection
-- cancellation
-- check-in tracking
-- no-show action after booking end
-- **checked-in booking -> session handoff**
-- booking/session linkage
-- customer linkage foundation
-- audit events for booking lifecycle actions
+A checked-in booking starts only during its booked window, only when its station is available, and only once. The created session inherits the booking end time. Optional `customer_id` linkage lets the handoff create an initial participant with a server-side rate/membership snapshot.
 
-A checked-in booking can be started only inside its booked time window, only if the station is actually available, and only once. The created session inherits the booked end time so the booking window remains authoritative.
-
-Automatic deposit payment/reconciliation, customer/member lookup UI and richer calendar/timeline workflows remain.
+Remaining: customer/member lookup UI, deposits/reconciliation, cancellation/refund policy and richer calendar/timeline.
 
 ### Orders / kitchen
 
-Implemented admin order queue with status progression and counter payment authorization. Full KDS, realtime events, stock reservation/decrement and customer order status remain.
+Live admin queue, status progression and counter payment authorization are implemented. Full KDS, inventory and customer order status remain.
 
 ### Finance
 
-`finance_transactions` supports revenue/expense ledger entries, source attribution and payment methods. Group settlements create explicit finance revenue entries. The next finance stage is reconciliation across gaming, food, memberships, deposits and refunds without double-counting.
+`finance_transactions` supports revenue/expense entries, source attribution and payment methods. Food and group settlement revenue foundations exist; full reconciliation and daily close remain.
+
+## LAN realtime
+
+A server-side in-process event bus and authenticated SSE endpoint are now implemented:
+
+- `GET /api/events`
+- staff authentication required
+- heartbeat frames every 15 seconds
+- event types for sessions, participants, billing, orders, payments, bookings, stations and inventory
+- sessions UI subscribes to SSE and retains a 30-second polling fallback
+
+This is the first realtime layer. The remaining work is publishing all state changes consistently, customer/KDS subscriptions, reconnect/replay semantics and multi-process deployment guarantees.
 
 ## Database and migrations
 
-`db/mysql-schema.sql` is the canonical baseline through booking check-in and finance ledger. Newer production features are delivered as incremental migrations.
+`db/mysql-schema.sql` is the canonical baseline through booking check-in and finance ledger. Newer features are incremental migrations.
 
-Current migration sequence includes:
+Current migrations:
 
 - `008_gaming_billing.sql`
 - `009_payment_mode_cleanup.sql`
@@ -226,36 +136,17 @@ Current migration sequence includes:
 - `015_booking_session_handoff.sql`
 - `016_booking_customer_link.sql`
 
-For a fresh database, `scripts/migrate.mjs` applies the canonical baseline at version 13 and then applies incremental migrations 014 onward. This avoids replaying historical ALTER migrations against the complete baseline while still installing newer feature tables/columns.
-
-Existing databases apply only unapplied migration versions.
+For a fresh database, `scripts/migrate.mjs` applies the canonical baseline at version 13 and then migrations 014 onward. Existing databases apply only unapplied versions.
 
 ## Security
 
-Staff roles:
-
-- OWNER
-- MANAGER
-- CASHIER
-- KITCHEN
-- FLOOR
+Staff roles: OWNER, MANAGER, CASHIER, KITCHEN, FLOOR.
 
 Staff authentication uses hashed passwords and server-side sessions. Sensitive operations use server-side permission checks and audit logging.
 
-Production hardening still required:
-
-- verify every admin API has correct RBAC
-- CSRF strategy
-- request/body limits
-- rate limits
-- CSP/security headers
-- complete audit coverage
-- payment event idempotency/reconciliation
-- refund authorization
+Remaining hardening: exhaustive API RBAC audit, CSRF strategy, request/body limits, rate limits, CSP/security headers, complete audit coverage, payment-event idempotency and refunds.
 
 ## Environment
-
-MySQL runtime variables:
 
 ```env
 GENZ_DB_HOST=127.0.0.1
@@ -263,17 +154,13 @@ GENZ_DB_PORT=3306
 GENZ_DB_USER=genz
 GENZ_DB_PASSWORD=change-this
 GENZ_DB_NAME=genz_os
-```
 
-Razorpay server-only secrets:
-
-```env
 GENZ_RAZORPAY_KEY_ID=...
 GENZ_RAZORPAY_KEY_SECRET=...
 GENZ_RAZORPAY_WEBHOOK_SECRET=...
 ```
 
-Never expose secrets to customer/admin browsers.
+Never expose server secrets to browsers.
 
 ## Development
 
@@ -285,49 +172,45 @@ npm start
 npm run db:migrate
 ```
 
-CI currently runs `npm install` followed by `npm run build` on pushes and pull requests to `main`.
+CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 
 ## Current implementation status
 
-### Green / implemented foundations
+### Implemented / strong foundations
 
 - MySQL source-of-truth architecture
-- lazy DB pool for CI-safe builds
+- lazy DB pool
 - customer mobile/OTP authentication
-- membership recognition and server-authoritative pricing
+- membership recognition and authoritative pricing
 - member-only price display
 - customer gaming price list
 - food ordering with Pay Now / Pay at Counter
 - Razorpay order/signature/webhook foundation
 - food payment idempotency
-- session QR resolution
-- station QR administration/print foundation
+- station QR resolution and print foundation
 - session extension protection
-- participant-level gaming billing
-- persisted pause periods
-- participant join/leave
-- authoritative live session/dashboard gaming totals
-- staff auth/RBAC foundation
-- audit logging foundation
+- participant-level pause-aware gaming billing
+- authoritative live session/dashboard totals
+- staff auth/RBAC foundation and audit logging
 - live sessions/orders/bookings UI
 - booking check-in/no-show
-- checked-in booking to session handoff
-- session-to-booking linkage
-- session groups foundation
-- group settlement engine and allocation ledger
+- checked-in booking -> session handoff
+- group billing and settlement/allocation engine
+- partial/equal/custom/by-PC/by-food settlement
 - finance ledger foundation
+- LAN SSE realtime foundation
 - migration runner with fresh baseline + incremental migrations
 
 ### Remaining to reach production-complete
 
-1. Booking deposit payment/reconciliation and customer/member lookup UI.
-2. LAN realtime event bus/SSE/WebSocket.
+1. Complete realtime event publication, customer/KDS subscriptions and replay/reconnect semantics.
+2. Booking customer/member lookup and deposit payment/reconciliation.
 3. Full KDS.
 4. Inventory, stock accounting and COGS.
 5. Admin menu, gaming-rate, station and image configuration.
 6. Membership lifecycle/payment/history UI.
 7. Customer management/history UI.
-8. Staff CRUD, password reset and session revocation UI.
+8. Staff CRUD, password reset and session revocation.
 9. Gaming/food/group/combined receipts.
 10. Razorpay/counter refunds and reconciliation.
 11. Daily close/cash drawer/payment-method reconciliation.
@@ -336,10 +219,8 @@ CI currently runs `npm install` followed by `npm run build` on pushes and pull r
 14. Backup and restore verification.
 15. Comprehensive unit/integration/E2E tests.
 16. Complete security audit.
-17. Supported Next.js upgrade and compatibility validation.
-18. Final admin-PC/LAN deployment and bootstrap validation.
-
-Next.js 14.2.15 remains temporarily for compatibility; it must be upgraded to a supported release before production.
+17. Upgrade from Next.js 14.2.15 to a supported release and validate compatibility.
+18. Final admin-PC/LAN deployment validation.
 
 ## Development order
 
@@ -348,7 +229,7 @@ CI/build correctness
  -> authoritative live billing
  -> group settlement
  -> booking/session handoff
- -> realtime
+ -> LAN realtime
  -> KDS + inventory
  -> configuration/admin lifecycle
  -> receipts/refunds/daily close
@@ -359,9 +240,7 @@ CI/build correctness
  -> production validation
 ```
 
-## Operational principle
-
-GenZ OS should behave as one café operating system, not disconnected pages. The complete lifecycle is:
+## Operational lifecycle
 
 ```text
 BOOKING
