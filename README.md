@@ -15,7 +15,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Membership pricing
 - Bookings
 - Participant-level gaming billing
-- Group billing
+- Group billing and settlement
 - Staff/RBAC
 - Finance/audit
 - Kitchen/KDS and inventory roadmap
@@ -91,7 +91,7 @@ Stack:
 - PWA-oriented customer/admin/kitchen interfaces
 - GitHub Actions CI
 
-The MySQL pool is intentionally **lazy-initialized**, so `npm run build` does not require a live database or production DB environment variables. Runtime database calls still require the configured MySQL environment.
+The MySQL pool is **lazy-initialized**, so `npm run build` does not require a live database or production DB environment variables. Runtime database calls still require configured MySQL variables.
 
 ## Customer experience
 
@@ -132,7 +132,7 @@ Food catalog, cart, server-side pricing, active-member eligibility, participant 
 
 ## Admin operations
 
-### Sessions
+### Sessions and live billing
 
 Implemented foundation:
 
@@ -144,7 +144,10 @@ Implemented foundation:
 - participant rate snapshots
 - grouping
 - live billing endpoint
+- **authoritative live gaming total in the sessions API and dashboard**
 - session extension protection
+
+The admin session total now combines server-computed live gaming charges with the session food balance instead of relying on a stale gaming balance while a session is active.
 
 ### Gaming billing
 
@@ -152,23 +155,41 @@ Server-authoritative billing supports:
 
 - elapsed time
 - per-minute rounding
-- pause periods
+- persisted pause periods
 - participant-specific join/leave intervals
 - member/non-member rate snapshots
 - finalization
 
 Pause periods are persisted in `session_pause_periods` rather than relying only on cumulative counters.
 
-### Groups
+### Groups and settlement
 
-Implemented foundation:
+Open groups support 2–20 active sessions while retaining individual attribution.
 
-- 2–20 active sessions per open group
-- individual attribution retained
-- group total calculation
-- open/close lifecycle
+The settlement engine now supports:
 
-Full split settlement is still required: one payer, equal split, by PC/session, by item, percentage/custom, mixed gaming + food, partial settlement and receipts.
+- one payer
+- equal split
+- custom payer amounts
+- by PC/session source
+- by food item source
+- mixed gaming + food settlement
+- partial settlement
+- overpayment protection
+- transaction-safe source allocation
+- settlement/payment audit records
+- finance ledger entry
+- group close protection while money remains outstanding
+
+Settlement tables:
+
+- `group_settlements`
+- `group_settlement_payers`
+- `group_settlement_allocations`
+
+Group totals are calculated from **live gaming billing plus unpaid/failed food**, less previously allocated settlements.
+
+Online Razorpay is intentionally not offered by the staff group-settlement UI yet; only captured staff-recorded methods (cash, UPI, card, other) are accepted until a dedicated group Razorpay flow is implemented and verified.
 
 ### Bookings
 
@@ -179,8 +200,8 @@ Implemented:
 - time range validation
 - conflict detection
 - cancellation
-- **check-in tracking**
-- **no-show action after the booking has ended**
+- check-in tracking
+- no-show action after the booking has ended
 - audit events for booking lifecycle actions
 
 Automatic booking-to-session handoff, deposit reconciliation and customer/member lookup remain.
@@ -191,11 +212,11 @@ Implemented admin order queue with status progression and counter payment author
 
 ### Finance
 
-`finance_transactions` is part of the canonical schema and supports revenue/expense ledger entries, source attribution and payment methods. The next finance stage is reconciliation across gaming, food, memberships, deposits and refunds without double-counting.
+`finance_transactions` is part of the canonical schema and supports revenue/expense ledger entries, source attribution and payment methods. Group settlements now create explicit finance revenue entries. The next finance stage is reconciliation across gaming, food, memberships, deposits and refunds without double-counting.
 
 ## Database and migrations
 
-`db/mysql-schema.sql` is the current canonical fresh-install schema. Existing installations are upgraded through `scripts/migrate.mjs` and `db/migrations/`.
+`db/mysql-schema.sql` is the canonical baseline through the current booking-check-in schema. Incremental migrations remain authoritative for newer production features.
 
 Current migration sequence includes:
 
@@ -205,10 +226,11 @@ Current migration sequence includes:
 - `011_*` integrity updates
 - `012_session_pause_periods.sql`
 - `013_booking_checkin.sql`
+- `014_group_settlements.sql`
 
-Fresh databases use the canonical schema as the complete current baseline and are stamped at the latest migration version instead of replaying historical ALTER migrations.
+For a fresh database, `scripts/migrate.mjs` applies the canonical baseline and then runs the newest incremental migration so migration 014 is installed without replaying historical ALTER migrations.
 
-The canonical schema currently includes finance ledger and booking check-in columns, preventing fresh-install drift.
+Existing databases apply only unapplied migration versions.
 
 ## Security
 
@@ -286,42 +308,44 @@ CI currently runs `npm install` followed by `npm run build` on pushes and pull r
 - participant-level gaming billing
 - persisted pause periods
 - participant join/leave
+- authoritative live session/dashboard gaming totals
 - staff auth/RBAC foundation
 - audit logging foundation
 - live sessions/orders/bookings UI
 - booking check-in/no-show
 - session groups foundation
+- **group settlement engine and allocation ledger**
 - finance ledger foundation
-- migration runner and canonical schema baseline
+- migration runner and canonical baseline
 
 ### Remaining to reach production-complete
 
-1. Full group settlement/split engine and receipts.
-2. Booking automatic session handoff and deposit reconciliation.
-3. Authoritative live billing on every admin/dashboard surface.
-4. LAN realtime event bus/SSE/WebSocket.
-5. Full KDS.
-6. Inventory, stock accounting and COGS.
-7. Admin menu, gaming-rate, station and image configuration.
-8. Membership lifecycle/payment/history UI.
-9. Customer management/history UI.
-10. Staff CRUD, password reset and session revocation UI.
-11. Gaming/food/group/combined receipts.
-12. Razorpay/counter refunds and reconciliation.
-13. Daily close/cash drawer/payment-method reconciliation.
-14. Station agents, heartbeat and hardware-control abstraction.
-15. Operational health monitoring.
-16. Backup and restore verification.
-17. Comprehensive unit/integration/E2E tests.
-18. Complete security audit.
-19. Supported Next.js upgrade and compatibility validation.
-20. Final admin-PC/LAN deployment and bootstrap validation.
+1. Finish booking automatic session handoff and deposit reconciliation.
+2. LAN realtime event bus/SSE/WebSocket.
+3. Full KDS.
+4. Inventory, stock accounting and COGS.
+5. Admin menu, gaming-rate, station and image configuration.
+6. Membership lifecycle/payment/history UI.
+7. Customer management/history UI.
+8. Staff CRUD, password reset and session revocation UI.
+9. Gaming/food/group/combined receipts.
+10. Razorpay/counter refunds and reconciliation.
+11. Daily close/cash drawer/payment-method reconciliation.
+12. Station agents, heartbeat and hardware-control abstraction.
+13. Operational health monitoring.
+14. Backup and restore verification.
+15. Comprehensive unit/integration/E2E tests.
+16. Complete security audit.
+17. Supported Next.js upgrade and compatibility validation.
+18. Final admin-PC/LAN deployment and bootstrap validation.
+
+As of August 25, 2026, Next.js lists 16.3.3 as Active LTS and 15.5.24 as Maintenance LTS; this project remains on 14.2.15 until compatibility work is completed. citeturn0search0turn0search1
 
 ## Development order
 
 ```text
 CI/build correctness
- -> billing authority
+ -> authoritative live billing
  -> group settlement
  -> booking/session handoff
  -> realtime
