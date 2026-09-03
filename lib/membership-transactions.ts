@@ -1,7 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
+import type {RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
-import {createMember} from './members';
 
 export type MembershipPaymentMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=(p:string)=>`${p}-${randomUUID()}`;
@@ -21,7 +20,7 @@ export async function createMembership(input:{id?:string;name:string;mobile:stri
   await c.execute('INSERT INTO members(id,name,mobile,tier,expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,TRUE,NOW(3),NOW(3))',[memberId,input.name.trim(),input.mobile.trim(),input.tier,expiresAt]);
   if(amount>0){
    const txId=id('MTX');
-   await c.execute('INSERT INTO membership_transactions(id,member_id,type,amount,method,status,previous_expires_at,new_expires_at,created_by,created_at) VALUES(?,?,?,?,\'NEW\',?,?,?,?,NOW(3))',[txId,memberId,'NEW',amount,input.method,null,expiresAt,input.staffId]);
+   await c.execute('INSERT INTO membership_transactions(id,member_id,type,amount,method,status,previous_expires_at,new_expires_at,created_by,created_at) VALUES(?,?,?,?,?,\'CAPTURED\',?,?,?,NOW(3))',[txId,memberId,'NEW',amount,input.method,null,expiresAt,input.staffId]);
    await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[id('FIN'),'REVENUE','MEMBERSHIP',`New membership · ${memberId}`,amount,input.method,'MEMBERSHIP_TRANSACTION',txId,input.staffId]);
    return{memberId,transactionId:txId,amount,method:input.method};
   }
