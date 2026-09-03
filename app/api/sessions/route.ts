@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listSessions, startSession, endSession } from '@/lib/store';
+import { listSessions, startSession, endSession } from '../../../lib/store';
 
 export async function GET(){ return NextResponse.json({ok:true,sessions:listSessions()}); }
 
