@@ -1,0 +1,6 @@
+import {NextResponse} from 'next/server';
+import {createSessionGroup,getSessionGroup,listSessionGroups,closeSessionGroup} from '../../../lib/session-groups';
+
+export async function GET(req:Request){try{const id=new URL(req.url).searchParams.get('id');return NextResponse.json({ok:true,groups:id?[await getSessionGroup(id)]:await listSessionGroups()},{headers:{'Cache-Control':'no-store'}})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to load groups'},{status:400})}}
+export async function POST(req:Request){try{const b=await req.json();if(!Array.isArray(b?.sessionIds))return NextResponse.json({ok:false,error:'sessionIds required'},{status:400});return NextResponse.json({ok:true,group:await createSessionGroup(b.sessionIds,typeof b.name==='string'?b.name:undefined)},{status:201})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to group sessions'},{status:400})}}
+export async function PATCH(req:Request){try{const b=await req.json();if(typeof b?.groupId!=='string')return NextResponse.json({ok:false,error:'groupId required'},{status:400});return NextResponse.json({ok:true,group:await closeSessionGroup(b.groupId)})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to close group'},{status:400})}}
