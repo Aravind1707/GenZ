@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createBooking, listBookings, cancelBooking } from '../../../lib/bookings';
 
-export async function GET(){ return NextResponse.json({ok:true,bookings:listBookings()}); }
-export async function POST(request:Request){
-  try { const body=await request.json(); const booking=createBooking({stationId:String(body.stationId||''),customerName:String(body.customerName||'Walk-in'),memberId:body.memberId?String(body.memberId):undefined,startsAt:String(body.startsAt||''),endsAt:String(body.endsAt||''),deposit:Number(body.deposit||0),notes:body.notes?String(body.notes):undefined,status:body.status}); return NextResponse.json({ok:true,booking},{status:201}); }
-  catch(error){ return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to create booking'},{status:400}); }
-}
-export async function PATCH(request:Request){
-  try { const body=await request.json(); return NextResponse.json({ok:true,booking:cancelBooking(String(body.bookingId||''))}); }
-  catch(error){ return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to cancel booking'},{status:400}); }
-}
+export async function GET(){try{return NextResponse.json({ok:true,bookings:await listBookings()},{headers:{'Cache-Control':'no-store'}});}catch{return NextResponse.json({ok:false,error:'Unable to load bookings'},{status:500});}}
+export async function POST(request:Request){try{const body=await request.json();if(typeof body?.stationId!=='string'||typeof body?.startsAt!=='string'||typeof body?.endsAt!=='string')return NextResponse.json({ok:false,error:'Invalid request'},{status:400});const booking=await createBooking({stationId:body.stationId,customerName:typeof body.customerName==='string'?body.customerName:'Walk-in',memberId:typeof body.memberId==='string'?body.memberId:undefined,startsAt:body.startsAt,endsAt:body.endsAt,deposit:Number.isSafeInteger(body.deposit)?body.deposit:0,notes:typeof body.notes==='string'?body.notes:undefined,status:body.status==='PENDING'?'PENDING':undefined});return NextResponse.json({ok:true,booking},{status:201});}catch(error){return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to create booking'},{status:400});}}
+export async function PATCH(request:Request){try{const body=await request.json();if(typeof body?.bookingId!=='string'||!body.bookingId)return NextResponse.json({ok:false,error:'Invalid request'},{status:400});return NextResponse.json({ok:true,booking:await cancelBooking(body.bookingId)});}catch(error){return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to cancel booking'},{status:400});}}
