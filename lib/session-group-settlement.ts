@@ -62,13 +62,14 @@ export async function settleGroup(input:{groupId:string;method:SettlementMethod;
    }
    if(fullyAllocated)await c.execute("UPDATE orders SET payment_status='PAID',paid_at=NOW(3) WHERE id=? AND payment_status IN ('UNPAID','FAILED')",[orderId]);
  }
- // The payment transaction mirrors the actual group allocation only when the complete order has been paid.
- // Its amount is the order total, not an individual item's value, and is created once because the order becomes PAID once.
- const[orders]=await c.query<RowDataPacket[]>('SELECT DISTINCT order_id FROM group_settlement_allocations WHERE settlement_id=? AND order_id IS NOT NULL',[settlementId]);
- for(const o of orders){const[order]=await c.query<RowDataPacket[]>('SELECT id,total,payment_status FROM orders WHERE id=?',[o.order_id]);if(order[0]&&order[0].payment_status==='PAID'){
-   const[existing]=await c.query<RowDataPacket[]>('SELECT id FROM payment_transactions WHERE order_id=? AND provider=\'COUNTER\' AND status=\'CAPTURED\' LIMIT 1',[order[0].id]);
-   if(!existing[0])await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),order[0].id,'COUNTER','CAPTURED',Number(order[0].total),'INR',new Date(),new Date()]);
- }}
+ // Record the food amount actually paid by this settlement. For partial settlements this is only
+ // the current allocation, while the final settlement records only the remaining amount.
+ // This avoids overstating payment event accounting with the order's full total.
+ const orderAmounts=new Map<string,number>();
+ for(const a of allocations){if(a.sourceType!=='FOOD_ORDER_ITEM')continue;const orderId=sourceMap.get(`FOOD_ORDER_ITEM:${a.sourceId}`)?.orderId;if(orderId)orderAmounts.set(orderId,(orderAmounts.get(orderId)||0)+a.amount);}
+ for(const [orderId,amount] of orderAmounts){if(amount<=0)continue;
+   await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),orderId,'COUNTER','CAPTURED',amount,'INR',new Date(),new Date()]);
+ }
  await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[id('FIN'),'REVENUE','GROUP_SETTLEMENT',`Group ${input.groupId} settlement`,total,input.method,'GROUP_SETTLEMENT',settlementId,input.staffId]);
  return{settlementId,groupId:input.groupId,amount:total,method:input.method,payers:payers.map((p,i)=>({...p,id:payerIds[i]})),allocations};
  });}
