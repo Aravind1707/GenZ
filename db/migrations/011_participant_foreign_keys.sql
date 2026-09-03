@@ -5,3 +5,7 @@ ALTER TABLE session_participants
     FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE SET NULL,
   ADD CONSTRAINT fk_participants_member
     FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL;
+
+INSERT INTO schema_migrations(version,applied_at)
+VALUES(11,NOW(3))
+ON DUPLICATE KEY UPDATE applied_at=applied_at;
