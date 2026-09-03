@@ -1,11 +1,33 @@
 import {randomUUID} from 'node:crypto';
-import type {RowDataPacket } from 'mysql2/promise';
+import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
+import {createMember} from './members';
 
 export type MembershipPaymentMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=(p:string)=>`${p}-${randomUUID()}`;
 const money=(n:number)=>Math.max(0,Math.round(n));
 const dateOnly=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'';
+
+export async function createMembership(input:{id?:string;name:string;mobile:string;tier:'REGULAR'|'GOLD'|'VIP';expiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
+ return transaction(async c=>{
+  const memberId=(input.id||`MEM-${randomUUID().replaceAll('-','').slice(0,16)}`).trim();
+  const expiresAt=dateOnly(input.expiresAt);
+  const amount=money(Number(input.amount));
+  if(!expiresAt||!input.name.trim()||!/^[0-9+() -]{7,20}$/.test(input.mobile.trim()))throw Error('INVALID_MEMBER_DETAILS');
+  if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw Error('INVALID_TIER');
+  if(!['CASH','UPI','CARD','RAZORPAY','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
+  if(amount<0)throw Error('INVALID_MEMBERSHIP_AMOUNT');
+  if(!/^[-A-Za-z0-9_]{2,64}$/.test(memberId))throw Error('INVALID_MEMBER_ID');
+  await c.execute('INSERT INTO members(id,name,mobile,tier,expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,TRUE,NOW(3),NOW(3))',[memberId,input.name.trim(),input.mobile.trim(),input.tier,expiresAt]);
+  if(amount>0){
+   const txId=id('MTX');
+   await c.execute('INSERT INTO membership_transactions(id,member_id,type,amount,method,status,previous_expires_at,new_expires_at,created_by,created_at) VALUES(?,?,?,?,\'NEW\',?,?,?,?,NOW(3))',[txId,memberId,'NEW',amount,input.method,null,expiresAt,input.staffId]);
+   await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[id('FIN'),'REVENUE','MEMBERSHIP',`New membership · ${memberId}`,amount,input.method,'MEMBERSHIP_TRANSACTION',txId,input.staffId]);
+   return{memberId,transactionId:txId,amount,method:input.method};
+  }
+  return{memberId,transactionId:null,amount:0,method:input.method};
+ });
+}
 
 export async function renewMembership(input:{memberId:string;newExpiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
  return transaction(async c=>{
