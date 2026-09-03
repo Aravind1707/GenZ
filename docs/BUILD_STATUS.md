@@ -1,43 +1,40 @@
 # GenZ OS Build Status
 
 ## Current milestone
-Persistent MySQL LAN foundation + customer mobile OTP identity + member-aware pricing.
+Persistent MySQL LAN foundation + customer OTP identity + member-aware catalog + food payment foundation.
 
 ## Implemented
-- Black / GenZ yellow visual system with high-contrast status accents.
-- Shared Next.js application shell.
-- Dashboard, sessions, bookings, orders, kitchen and finance screens.
-- Station domain model for PC, PS5 and MOZA.
-- Session lifecycle API: list, start and end.
-- Food order API: create, list and advance through kitchen states.
-- Booking conflict engine and API.
-- MySQL connection pool and transactional data layer.
-- Persistent stations, sessions, orders, order items and bookings.
-- Server-side food pricing; client-supplied prices are not trusted.
-- Session QR tokens stored as SHA-256 hashes rather than raw tokens.
-- Customer mobile-number OTP login with 5-minute OTP expiry and 5-attempt verification limit.
-- OTP request throttling: 30-second cooldown and maximum 5 requests/hour per mobile.
-- HttpOnly customer session cookie with 30-day expiry.
-- Customer mobile is matched against the persistent members table after OTP verification.
-- Customer pricing endpoint returns separate Gaming and Food & Beverages pricing.
-- Gaming pricing supports PC NORMAL/PREMIUM, PS5 and MOZA, with regular/member price, unit label and configurable specs.
-- Non-members can see the member price as an upsell; members see their member price and savings.
-- Customer-facing mobile login/pricing UI is responsive for phone screens.
-- MySQL setup keeps the database on localhost and grants the app account runtime CRUD permissions only.
-- Security headers and no-store/private caching on sensitive customer pricing responses.
+- Shared GenZ dark/yellow application shell plus customer mobile UI.
+- Persistent MySQL data layer for stations, sessions, bookings, orders, customers and members.
+- Customer mobile OTP login with throttling and HttpOnly session cookie.
+- Member lookup by verified mobile and member/non-member pricing display.
+- Gaming price list supports PC NORMAL/PREMIUM, PS5, PS4, PSVR and MOZA with configurable specs, images and regular/member prices.
+- Customer catalog now renders local placeholders when an image URL is not configured.
+- Food and beverage catalog is explicitly separated from the gaming price-list experience.
+- Food payment modes are now restricted to PAY NOW or PAY AT COUNTER; ADD TO BILL/WALLET are removed from the customer order path.
+- Food orders record payment state and payment transactions in MySQL.
+- Session participants link verified customer identity and member status to a session, so membership is not a client-side checkbox.
+- Server-side food pricing uses the verified customer's member relationship rather than a browser-supplied price.
+- Razorpay server integration foundation: server-created payment orders, server-side checkout-signature verification, and webhook handling for captured/paid events.
+- Razorpay credentials are server-only environment variables.
+- Station schema migration now supports PC, PS5, PS4, PSVR and MOZA.
+- Fixed `advanceOrder` to keep transaction reads on the same MySQL connection.
 
-## OTP provider
-The customer OTP transport is server-side and currently supports MSG91 configuration through environment variables. Credentials are never sent to browsers. Development-only OTP return is opt-in through `GENZ_OTP_DEV_MODE=true` and must remain disabled in production. Indian SMS deployments should use an approved DLT/template configuration with the provider.
+## Payment behavior
+PAY NOW creates a pending payment-backed food order and a Razorpay order. Customer confirmation is verified server-side; Razorpay webhook events can also mark the order PAID if the browser callback is lost. PAY AT COUNTER remains UNPAID until authorized staff marks it paid.
 
-## Important development note
-The customer identity and pricing layer is now persistent, but the system is not production-ready yet. Staff authentication/RBAC, payment ledger, gaming billing, group/split billing, QR session authorization, real-time KDS events, audit records, inventory/COGS and reports still need to be completed and security-tested.
+## Critical security architecture decision
+A customer must never be allowed to choose a member price or freely type a station/session ID. The next QR layer will bind the customer's verified login to the active station session using a short-lived signed session authorization. This is what prevents a customer at PC-01 from ordering against PC-07.
+
+For group gaming, each player becomes a session participant. A PS5 at ₹100/head with four players is four participant charges. If only one participant is an active member at ₹90/head, the gaming total is ₹90 + ₹100 + ₹100 + ₹100 = ₹390. The same identity model will be used for food: the backend determines each customer's member price from their verified account; nobody can claim a discount by editing browser data. Shared food can remain attached to the session/group while individually ordered food can be attributed to its participant.
+
+## Not production-ready yet
+Staff authentication/RBAC, station/session QR authorization, server-authoritative gaming timer/rate engine, complete group/split billing UI, realtime KDS/customer events, full payment reconciliation/refunds, audit logging, inventory/COGS, admin pricing editor, backups, security testing, and supported-Next.js upgrade remain before production deployment.
 
 ## Next
-1. Staff authentication + RBAC and API authorization.
-2. Server-authoritative gaming timer/rate engine with member pricing.
-3. QR station/session authorization for customer ordering.
-4. Payment ledger, partial payments, refunds and reconciliation.
-5. Group sessions and split billing.
-6. Real-time event layer for staff/KDS/customer screens.
-7. Admin pricing/spec/menu configuration and inventory/COGS.
-8. Operational reports, backups and production security testing.
+1. Staff authentication + RBAC and secure admin APIs.
+2. Permanent station QR + short-lived active-session authorization.
+3. Customer food cart + Razorpay checkout + customer payment-status screen.
+4. Admin live orders/payment-status screen with automatic PAID updates.
+5. Server-authoritative participant gaming billing and group/split settlement.
+6. Realtime LAN events, audit log, inventory/COGS, reports, backups and security testing.
