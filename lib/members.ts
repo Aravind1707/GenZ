@@ -1,11 +1,13 @@
+import {randomBytes} from 'node:crypto';
+import type {RowDataPacket} from 'mysql2/promise';
+import {pool} from './mysql';
 export type MemberTier='REGULAR'|'GOLD'|'VIP';
-export type Member={id:string;name:string;tier:MemberTier;expiresAt:string;walletBalance:number;active:boolean};
-
-const members:Member[]=[
- {id:'1042',name:'Demo Member',tier:'GOLD',expiresAt:'2027-06-30',walletBalance:850,active:true},
- {id:'1180',name:'Demo VIP',tier:'VIP',expiresAt:'2027-03-31',walletBalance:1400,active:true},
-];
-
-export function findMember(id:string){ const member=members.find(m=>m.id===id.trim()); if(!member) return null; const active=member.active && new Date(member.expiresAt+'T23:59:59')>=new Date(); return {...member,active}; }
-export function memberPrice(base:number,tier:MemberTier){ const discount={REGULAR:0,GOLD:.10,VIP:.15}[tier]; return Math.round(base*(1-discount)); }
-export function listMembers(){ return members.map(m=>({...m,active:!!findMember(m.id)?.active})); }
+export type Member={id:string;name:string;mobile:string;tier:MemberTier;expiresAt:string;active:boolean};
+const id=()=>`MEM-${randomBytes(8).toString('hex')}`;
+const map=(r:any):Member=>({id:r.id,name:r.name,mobile:r.mobile,tier:r.tier,expiresAt:String(r.expires_at).slice(0,10),active:Boolean(r.active)&&new Date(`${String(r.expires_at).slice(0,10)}T23:59:59`)>=new Date()});
+export async function findMember(memberId:string){const [rows]=await pool.query<(RowDataPacket&{id:string;name:string;mobile:string;tier:MemberTier;expires_at:string;active:number})[]>('SELECT id,name,mobile,tier,expires_at,active FROM members WHERE id=? LIMIT 1',[memberId.trim()]);return rows[0]?map(rows[0]):null;}
+export async function findMemberByMobile(mobile:string){const [rows]=await pool.query<(RowDataPacket&{id:string;name:string;mobile:string;tier:MemberTier;expires_at:string;active:number})[]>('SELECT id,name,mobile,tier,expires_at,active FROM members WHERE mobile=? LIMIT 1',[mobile.trim()]);return rows[0]?map(rows[0]):null;}
+export async function listMembers(search=''){const q=search.trim();const [rows]=await pool.query<(RowDataPacket&{id:string;name:string;mobile:string;tier:MemberTier;expires_at:string;active:number})[]>('SELECT id,name,mobile,tier,expires_at,active FROM members '+(q?'WHERE id LIKE ? OR name LIKE ? OR mobile LIKE ? ':'')+'ORDER BY active DESC,expires_at DESC,name LIMIT 200',q?[`%${q}%`,`%${q}%`,`%${q}%`]:[]);return rows.map(map);}
+export async function createMember(input:{id?:string;name:string;mobile:string;tier:MemberTier;expiresAt:string}){const memberId=(input.id||id()).trim();if(!/^[-A-Za-z0-9_]{2,64}$/.test(memberId))throw new Error('INVALID_MEMBER_ID');if(!input.name.trim()||!/^[0-9+() -]{7,20}$/.test(input.mobile.trim()))throw new Error('INVALID_MEMBER_DETAILS');if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw new Error('INVALID_TIER');await pool.execute('INSERT INTO members(id,name,mobile,tier,expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,TRUE,NOW(3),NOW(3))',[memberId,input.name.trim(),input.mobile.trim(),input.tier,input.expiresAt]);return findMember(memberId);}
+export async function updateMember(memberId:string,input:{name?:string;mobile?:string;tier?:MemberTier;expiresAt?:string;active?:boolean}){const fields:string[]=[];const values:unknown[]=[];if(input.name!==undefined){if(!input.name.trim())throw new Error('INVALID_NAME');fields.push('name=?');values.push(input.name.trim());}if(input.mobile!==undefined){if(!/^[0-9+() -]{7,20}$/.test(input.mobile.trim()))throw new Error('INVALID_MOBILE');fields.push('mobile=?');values.push(input.mobile.trim());}if(input.tier!==undefined){if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw new Error('INVALID_TIER');fields.push('tier=?');values.push(input.tier);}if(input.expiresAt!==undefined){fields.push('expires_at=?');values.push(input.expiresAt);}if(input.active!==undefined) {fields.push('active=?');values.push(input.active);}if(!fields.length)throw new Error('NO_CHANGES');fields.push('updated_at=NOW(3)');values.push(memberId.trim());const [result]=await pool.execute('UPDATE members SET '+fields.join(',')+' WHERE id=?',[...values]);if((result as {affectedRows:number}).affectedRows!==1)throw new Error('MEMBER_NOT_FOUND');return findMember(memberId);}
+export function memberPrice(base:number,tier:MemberTier){const discount={REGULAR:0,GOLD:.10,VIP:.15}[tier];return Math.round(base*(1-discount));}
