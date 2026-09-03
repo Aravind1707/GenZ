@@ -18,7 +18,8 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Group billing and settlement
 - Staff/RBAC
 - Finance/audit
-- Kitchen/KDS and inventory roadmap
+- Kitchen/KDS
+- Inventory foundation
 - Station hardware/agent roadmap
 
 ## Non-negotiable rules
@@ -34,6 +35,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Permanent station QR identifies equipment only and never grants authorization.
 - Preserve `customer -> participant -> session -> station -> order -> payment` attribution.
 - Every rupee needs an auditable transaction/ledger origin.
+- Food stock is reserved transactionally at order creation, released on unpaid cancellation, and consumed on paid delivery.
 
 ## Architecture
 
@@ -76,7 +78,7 @@ QR station -> active session -> authenticated customer -> participant -> food or
 
 ### Food
 
-Catalog, cart, server-side pricing, active-member eligibility, participant attribution, Pay Now and Pay at Counter are implemented. Customer history, stock-aware ordering and realtime customer status remain.
+Catalog, cart, server-side pricing, active-member eligibility, participant attribution, Pay Now and Pay at Counter are implemented. Inventory reservations now prevent overselling. Customer history/status, stock-aware catalog UX, modifiers and refund policy remain.
 
 ## Admin operations
 
@@ -102,7 +104,21 @@ Remaining: customer/member lookup UI, deposits/reconciliation, cancellation/refu
 
 ### Orders / kitchen
 
-Live admin queue, status progression and counter payment authorization are implemented. Full KDS, inventory and customer order status remain.
+Live admin queue, status progression, counter payment authorization, inventory reservation and staff cancellation/delivery paths are implemented. Full KDS, customer order status, modifiers and refunds remain.
+
+### Inventory
+
+Migration `017_inventory.sql` adds an inventory ledger with on-hand stock, reserved stock, reorder thresholds, reservation records and movement history. Admin `/inventory` supports receiving, positive adjustments, waste, reorder level and unit settings with staff permissions, audit logging and realtime change events.
+
+Order lifecycle:
+
+```text
+FOOD ORDER CREATED -> RESERVE STOCK
+UNPAID CANCELLATION -> RELEASE STOCK
+PAID + READY + DELIVERED -> CONSUME STOCK
+```
+
+Remaining: recipe/BOM quantities, receiving cost/batches, stocktake, COGS, richer wastage reasons and customer out-of-stock UX.
 
 ### Finance
 
@@ -110,7 +126,7 @@ Live admin queue, status progression and counter payment authorization are imple
 
 ## LAN realtime
 
-A server-side in-process event bus and authenticated SSE endpoint are now implemented:
+A server-side in-process event bus and authenticated SSE endpoint are implemented:
 
 - `GET /api/events`
 - staff authentication required
@@ -118,7 +134,7 @@ A server-side in-process event bus and authenticated SSE endpoint are now implem
 - event types for sessions, participants, billing, orders, payments, bookings, stations and inventory
 - sessions UI subscribes to SSE and retains a 30-second polling fallback
 
-This is the first realtime layer. The remaining work is publishing all state changes consistently, customer/KDS subscriptions, reconnect/replay semantics and multi-process deployment guarantees.
+Remaining: customer/KDS subscriptions, replay/reconnect semantics, consistent mutation coverage and multi-process deployment guarantees.
 
 ## Database and migrations
 
@@ -135,6 +151,7 @@ Current migrations:
 - `014_group_settlements.sql`
 - `015_booking_session_handoff.sql`
 - `016_booking_customer_link.sql`
+- `017_inventory.sql`
 
 For a fresh database, `scripts/migrate.mjs` applies the canonical baseline at version 13 and then migrations 014 onward. Existing databases apply only unapplied versions.
 
@@ -142,7 +159,7 @@ For a fresh database, `scripts/migrate.mjs` applies the canonical baseline at ve
 
 Staff roles: OWNER, MANAGER, CASHIER, KITCHEN, FLOOR.
 
-Staff authentication uses hashed passwords and server-side sessions. Sensitive operations use server-side permission checks and audit logging.
+Staff authentication uses hashed passwords and server-side sessions. Sensitive operations use server-side permission checks and audit logging. Inventory writes are restricted to OWNER/MANAGER; read access is available to operational roles that need stock visibility.
 
 Remaining hardening: exhaustive API RBAC audit, CSRF strategy, request/body limits, rate limits, CSP/security headers, complete audit coverage, payment-event idempotency and refunds.
 
@@ -187,6 +204,8 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 - food ordering with Pay Now / Pay at Counter
 - Razorpay order/signature/webhook foundation
 - food payment idempotency
+- transactional inventory reservation/release/consumption
+- inventory admin screen and movement ledger
 - station QR resolution and print foundation
 - session extension protection
 - participant-level pause-aware gaming billing
@@ -203,21 +222,21 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 
 ### Remaining to reach production-complete
 
-1. Complete realtime event publication, customer/KDS subscriptions and replay/reconnect semantics.
-2. Booking customer/member lookup and deposit payment/reconciliation.
-3. Full KDS.
-4. Inventory, stock accounting and COGS.
-5. Admin menu, gaming-rate, station and image configuration.
-6. Membership lifecycle/payment/history UI.
-7. Customer management/history UI.
-8. Staff CRUD, password reset and session revocation.
-9. Gaming/food/group/combined receipts.
-10. Razorpay/counter refunds and reconciliation.
-11. Daily close/cash drawer/payment-method reconciliation.
-12. Station agents, heartbeat and hardware-control abstraction.
-13. Operational health monitoring.
-14. Backup and restore verification.
-15. Comprehensive unit/integration/E2E tests.
+1. Verify CI for newest head and add comprehensive automated tests.
+2. Complete realtime customer/KDS subscriptions and replay/reconnect semantics.
+3. Booking customer/member lookup and deposit payment/reconciliation.
+4. Full KDS.
+5. Inventory recipes/BOM, COGS, stocktake and receiving cost.
+6. Admin menu, gaming-rate, station and image configuration.
+7. Membership lifecycle/payment/history UI.
+8. Customer management/history UI.
+9. Staff CRUD, password reset and session revocation.
+10. Gaming/food/group/combined receipts.
+11. Razorpay/counter refunds and reconciliation.
+12. Daily close/cash drawer/payment-method reconciliation.
+13. Station agents, heartbeat and hardware-control abstraction.
+14. Operational health monitoring.
+15. Backup and restore verification.
 16. Complete security audit.
 17. Upgrade from Next.js 14.2.15 to a supported release and validate compatibility.
 18. Final admin-PC/LAN deployment validation.
