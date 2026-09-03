@@ -1,0 +1,12 @@
+USE genz_os;
+ALTER TABLE stations ADD COLUMN IF NOT EXISTS pc_tier ENUM('NORMAL','PREMIUM') NULL AFTER type;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS paused_total_seconds INT UNSIGNED NOT NULL DEFAULT 0 AFTER paused_at;
+ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS joined_at DATETIME(3) NULL AFTER created_at;
+ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS left_at DATETIME(3) NULL AFTER joined_at;
+ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS billing_regular_rate BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER left_at;
+ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS billing_member_rate BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER billing_regular_rate;
+ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS member_tier ENUM('REGULAR','GOLD','VIP') NULL AFTER billing_member_rate;
+UPDATE session_participants SET joined_at=created_at WHERE joined_at IS NULL;
+UPDATE sessions SET paused_total_seconds=0 WHERE paused_total_seconds IS NULL;
+CREATE INDEX idx_participants_session_active ON session_participants(session_id,active,joined_at);
+INSERT INTO schema_migrations(version,applied_at) VALUES(8,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at;
