@@ -23,8 +23,8 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at DATETIME(3) NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(80) NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(80) NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature VARCHAR(128) NULL;
-ALTER TABLE orders ADD UNIQUE KEY IF NOT EXISTS uq_orders_razorpay_order(razorpay_order_id);
-ALTER TABLE orders ADD UNIQUE KEY IF NOT EXISTS uq_orders_razorpay_payment(razorpay_payment_id);
+ALTER TABLE orders ADD UNIQUE KEY uq_orders_razorpay_order(razorpay_order_id);
+ALTER TABLE orders ADD UNIQUE KEY uq_orders_razorpay_payment(razorpay_payment_id);
 
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id VARCHAR(64) NOT NULL PRIMARY KEY,
