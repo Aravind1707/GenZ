@@ -1,0 +1,4 @@
+import {NextRequest,NextResponse} from 'next/server';
+const protectedPaths=['/sessions','/bookings','/orders','/finance'];
+export function middleware(request:NextRequest){const path=request.nextUrl.pathname;if(path.startsWith('/staff-login')||path.startsWith('/api/staff')||path.startsWith('/api/customer')||path.startsWith('/customer'))return NextResponse.next();if(protectedPaths.some(p=>path===p||path.startsWith(`${p}/`))){if(!request.cookies.get('genz_staff')?.value){const url=request.nextUrl.clone();url.pathname='/staff-login';url.searchParams.set('next',path);return NextResponse.redirect(url);}}return NextResponse.next();}
+export const config={matcher:['/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*']};
