@@ -5,19 +5,22 @@ import {pool,transaction} from './mysql';
 export type InventoryItem={itemId:string;name:string;category:string;onHand:number;reserved:number;available:number;reorderLevel:number;unit:string;lowStock:boolean;updatedAt:string};
 const id=(p:string)=>`${p}-${randomUUID()}`;
 
+type MovementType='RECEIVE'|'ADJUST'|'WASTE'|'RESERVE'|'RELEASE'|'CONSUME';
+
 export async function listInventory():Promise<InventoryItem[]>{
   const [rows]=await pool.query<(RowDataPacket&{item_id:string;name:string;category:string;on_hand:number;reserved:number;reorder_level:number;unit:string;updated_at:string})[]>('SELECT i.item_id,m.name,m.category,i.on_hand,i.reserved,i.reorder_level,i.unit,i.updated_at FROM inventory_items i JOIN menu_items m ON m.id=i.item_id WHERE m.active=TRUE ORDER BY m.category,m.name');
   return rows.map(r=>({itemId:r.item_id,name:r.name,category:r.category,onHand:Number(r.on_hand),reserved:Number(r.reserved),available:Number(r.on_hand)-Number(r.reserved),reorderLevel:Number(r.reorder_level),unit:r.unit,lowStock:Number(r.on_hand)-Number(r.reserved)<=Number(r.reorder_level),updatedAt:new Date(r.updated_at).toISOString()}));
 }
 
-async function movement(c:PoolConnection,itemId:string,type:string,qty:number,staffId?:string,orderId?:string,note?:string){await c.execute('INSERT INTO inventory_movements(id,item_id,type,qty,order_id,note,created_by,created_at) VALUES(?,?,?,?,?,?,?,NOW(3))',[id('MOV'),itemId,type,qty,orderId||null,note||null,staffId||null]);}
+async function movement(c:PoolConnection,itemId:string,type:MovementType,qty:number,staffId?:string,orderId?:string,note?:string){await c.execute('INSERT INTO inventory_movements(id,item_id,type,qty,order_id,note,created_by,created_at) VALUES(?,?,?,?,?,?,?,NOW(3))',[id('MOV'),itemId,type,qty,orderId||null,note||null,staffId||null]);}
 
 export async function ensureInventoryRows(){
   await pool.execute("INSERT INTO inventory_items(item_id,on_hand,reserved,reorder_level,unit,updated_at) SELECT id,0,0,0,'unit',NOW(3) FROM menu_items m WHERE NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.item_id=m.id)");
 }
 
 export async function receiveStock(itemId:string,qty:number,staffId:string,note?:string){return adjustStock(itemId,qty,'RECEIVE',staffId,note);}
-export async function adjustStock(itemId:string,delta:number,type:'ADJUST'|'WASTE',staffId:string,note?:string){
+export async function adjustStock(itemId:string,delta:number,type:MovementType,staffId:string,note?:string){
+  if(!['RECEIVE','ADJUST','WASTE'].includes(type))throw Error('Invalid stock movement type');
   if(!Number.isInteger(delta)||delta===0)throw Error('Invalid stock quantity');
   return transaction(async(c:PoolConnection)=>{
     const [rows]=await c.query<RowDataPacket[]>('SELECT on_hand,reserved FROM inventory_items WHERE item_id=? FOR UPDATE',[itemId]);
