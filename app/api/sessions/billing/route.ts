@@ -1,0 +1,10 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {calculateSessionBilling,finalizeSessionBilling,pauseSession,resumeSession,addParticipant} from '../../../../lib/gaming-billing';
+import {COOKIE,requireStaff,audit} from '../../../../lib/staff-auth';
+import {getCustomerByToken} from '../../../../lib/customer-auth';
+
+const auth=async(permission:string)=>requireStaff((await cookies()).get(COOKIE)?.value,permission);
+const err=(e:unknown)=>{const m=e instanceof Error?e.message:'';const status=m==='STAFF_FORBIDDEN'?403:m==='STAFF_UNAUTHORIZED'?401:400;return NextResponse.json({ok:false,error:status===403?'Permission denied':status===401?'Staff authorization required':m||'Request failed'},{status});};
+export async function GET(req:Request){try{const id=new URL(req.url).searchParams.get('sessionId')||'';if(!id||id.length>64)return NextResponse.json({ok:false,error:'Invalid session'},{status:400});const token=(await cookies()).get(COOKIE)?.value;const staff=await requireStaff(token,'sessions:read');return NextResponse.json({ok:true,billing:await calculateSessionBilling(id)} ,{headers:{'Cache-Control':'no-store'}});}catch(e){return err(e)}}
+export async function POST(req:Request){try{const staff=await auth('sessions:write');const b=await req.json();const sessionId=typeof b?.sessionId==='string'?b.sessionId:'';if(!sessionId||sessionId.length>64)return NextResponse.json({ok:false,error:'Invalid session'},{status:400});if(b.action==='pause')await pauseSession(sessionId);else if(b.action==='resume')await resumeSession(sessionId);else if(b.action==='finalize')await finalizeSessionBilling(sessionId);else if(b.action==='add-participant'&&typeof b.customerId==='string')await addParticipant({sessionId,customerId:b.customerId},staff.id);else return NextResponse.json({ok:false,error:'Invalid action'},{status:400});await audit(staff.id,`SESSION_${String(b.action).toUpperCase().replaceAll('-','_')}`,'session',sessionId);return NextResponse.json({ok:true,billing:await calculateSessionBilling(sessionId)},{headers:{'Cache-Control':'no-store'}});}catch(e){return err(e)}}
