@@ -38,6 +38,17 @@ export async function listOrders():Promise<Order[]> {
   return rows.map(r=>({id:r.id,sessionId:r.session_id,stationId:r.station_id,items:byOrder.get(r.id)||[],status:r.status,paymentMode:r.payment_mode,createdAt:new Date(r.created_at).toISOString(),total:Number(r.total)}));
 }
 
+const mapOrder = (row:OrderRow, items:ItemRow[]):Order => ({
+  id:row.id,
+  sessionId:row.session_id,
+  stationId:row.station_id,
+  items:items.filter(i=>i.order_id===row.id).map(i=>({itemId:i.item_id,name:i.name,qty:Number(i.qty),unitPrice:Number(i.unit_price)})),
+  status:row.status,
+  paymentMode:row.payment_mode,
+  createdAt:new Date(row.created_at).toISOString(),
+  total:Number(row.total),
+});
+
 export async function startSession(input:{stationId:string;customerName:string;memberId?:string}) {
   const customerName=input.customerName.trim().slice(0,120)||'Walk-in';
   const memberId=input.memberId?.trim().slice(0,64)||undefined;
@@ -90,9 +101,15 @@ export async function createOrder(input:{sessionId:string;items:OrderItem[];paym
 
 export async function advanceOrder(orderId:string) {
   return transaction(async(connection:PoolConnection)=>{
-    const [rows]=await connection.query<OrderRow[]>('SELECT * FROM orders WHERE id=? FOR UPDATE',[orderId]); const order=rows[0]; if(!order) throw new Error('Order not found');
-    const flow:OrderStatus[]=['NEW','ACCEPTED','PREPARING','READY','DELIVERED']; const index=flow.indexOf(order.status); if(index<0||index>=flow.length-1) throw new Error('Invalid order transition');
-    const next=flow[index+1]; await connection.execute('UPDATE orders SET status=? WHERE id=? AND status=?',[next,orderId,order.status]);
-    const [fresh]=await connection.query<OrderRow[]>('SELECT * FROM orders WHERE id=?',[orderId]); return (await listOrders()).find(o=>o.id===fresh[0].id)!;
+    const [rows]=await connection.query<OrderRow[]>('SELECT * FROM orders WHERE id=? FOR UPDATE',[orderId]);
+    const order=rows[0]; if(!order) throw new Error('Order not found');
+    const flow:OrderStatus[]=['NEW','ACCEPTED','PREPARING','READY','DELIVERED'];
+    const index=flow.indexOf(order.status); if(index<0||index>=flow.length-1) throw new Error('Invalid order transition');
+    const next=flow[index+1];
+    const [result]=await connection.execute('UPDATE orders SET status=? WHERE id=? AND status=?',[next,orderId,order.status]);
+    if ((result as {affectedRows:number}).affectedRows !== 1) throw new Error('Order changed; retry');
+    const [fresh]=await connection.query<OrderRow[]>('SELECT * FROM orders WHERE id=?',[orderId]);
+    const [items]=await connection.query<ItemRow[]>('SELECT order_id,item_id,name,qty,unit_price FROM order_items WHERE order_id=? ORDER BY id',[orderId]);
+    return mapOrder(fresh[0],items);
   });
 }
