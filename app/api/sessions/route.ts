@@ -1,26 +1,8 @@
-import { NextResponse } from 'next/server';
-import { listSessions, startSession, endSession } from '../../../lib/store';
-
-export async function GET() {
-  try { return NextResponse.json({ ok:true, sessions:await listSessions() }, { headers:{'Cache-Control':'no-store'} }); }
-  catch { return NextResponse.json({ok:false,error:'Unable to load sessions'},{status:500}); }
-}
-
-export async function POST(request:Request) {
-  try {
-    const body=await request.json();
-    const stationId=typeof body?.stationId==='string'?body.stationId:'';
-    const customerName=typeof body?.customerName==='string'?body.customerName:'';
-    const memberId=typeof body?.memberId==='string'?body.memberId:undefined;
-    if(stationId.length<1||stationId.length>64||customerName.length>120||memberId&&memberId.length>64) return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
-    return NextResponse.json({ok:true,session:await startSession({stationId,customerName,memberId})},{status:201});
-  } catch(error) { return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to start session'},{status:400}); }
-}
-
-export async function PATCH(request:Request) {
-  try {
-    const body=await request.json(); const sessionId=typeof body?.sessionId==='string'?body.sessionId:'';
-    if(!sessionId||sessionId.length>64) return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
-    return NextResponse.json({ok:true,session:await endSession(sessionId)});
-  } catch(error) { return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to end session'},{status:400}); }
-}
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {listSessions,startSession,endSession} from '../../../lib/store';
+import {COOKIE,requireStaff,audit} from '../../../lib/staff-auth';
+const authError=(e:unknown)=>{const m=e instanceof Error?e.message:'';return NextResponse.json({ok:false,error:m==='STAFF_FORBIDDEN'?'Permission denied':'Staff authorization required'},{status:m==='STAFF_FORBIDDEN'?403:401});};
+export async function GET(){try{await requireStaff((await cookies()).get(COOKIE)?.value,'sessions:read');return NextResponse.json({ok:true,sessions:await listSessions()},{headers:{'Cache-Control':'no-store'}});}catch(e){return authError(e);}}
+export async function POST(request:Request){try{const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'sessions:write');const body=await request.json();const stationId=typeof body?.stationId==='string'?body.stationId:'';const customerName=typeof body?.customerName==='string'?body.customerName:'';const memberId=typeof body?.memberId==='string'?body.memberId:undefined;if(stationId.length<1||stationId.length>64||customerName.length>120||memberId&&memberId.length>64)return NextResponse.json({ok:false,error:'Invalid request'},{status:400});const session=await startSession({stationId,customerName,memberId});await audit(staff.id,'SESSION_STARTED','session',session.id,{stationId});return NextResponse.json({ok:true,session},{status:201});}catch(e){if(e instanceof Error&&(e.message==='STAFF_UNAUTHORIZED'||e.message==='STAFF_FORBIDDEN'))return authError(e);return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to start session'},{status:400});}}
+export async function PATCH(request:Request){try{const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'sessions:write');const body=await request.json();const sessionId=typeof body?.sessionId==='string'?body.sessionId:'';if(!sessionId||sessionId.length>64)return NextResponse.json({ok:false,error:'Invalid request'},{status:400});const session=await endSession(sessionId);await audit(staff.id,'SESSION_ENDED','session',sessionId);return NextResponse.json({ok:true,session});}catch(e){if(e instanceof Error&&(e.message==='STAFF_UNAUTHORIZED'||e.message==='STAFF_FORBIDDEN'))return authError(e);return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to end session'},{status:400});}}
