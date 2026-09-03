@@ -339,7 +339,7 @@ CI currently runs `npm install` followed by `npm run build` on pushes and pull r
 17. Supported Next.js upgrade and compatibility validation.
 18. Final admin-PC/LAN deployment and bootstrap validation.
 
-As of August 25, 2026, Next.js lists 16.3.3 as Active LTS and 15.5.24 as Maintenance LTS; this project remains on 14.2.15 until compatibility work is completed. citeturn0search0turn0search1
+Next.js 14.2.15 remains in the repository temporarily for compatibility work. The project should move to a supported release before production deployment.
 
 ## Development order
 
