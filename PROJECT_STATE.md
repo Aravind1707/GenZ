@@ -2,7 +2,7 @@
 
 > Shared hand-off for parallel AI development. `main` is the source of truth. Fetch latest `main` before changing files, preserve other agents' work, keep commits small, and update this file plus `README.md` after meaningful work.
 
-**State reviewed:** 2026-09-03 18:58 IST  
+**State reviewed:** 2026-09-03 19:00 IST  
 **Repository:** `Aravind1707/GenZ`  
 **Branch:** `main`
 
@@ -30,13 +30,13 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - GitHub Actions runs `npm install` and `npm run build`.
 - Core café operation is LAN-first; MSG91/Razorpay are integrations.
 
-Earlier stable CI run `33760526620` passed. Every new head triggers a fresh build; verify the newest run before declaring the newest commit green.
+Earlier stable CI run `33760526620` passed. New feature commits trigger fresh builds; verify the newest run before declaring the current head green.
 
 ## Database/migrations
 
 `db/mysql-schema.sql` is the canonical baseline through booking check-in and finance ledger.
 
-Current migrations include:
+Current migrations:
 
 - 008 gaming billing
 - 009 payment-mode cleanup
@@ -48,7 +48,7 @@ Current migrations include:
 - 015 booking-session handoff linkage
 - 016 booking-customer linkage
 
-Fresh-install migration behavior in `scripts/migrate.mjs`: apply canonical baseline at version 13, then apply all incremental migrations >13. This prevents replaying historical ALTER migrations against the baseline while installing newer feature tables/columns.
+Fresh-install behavior: `scripts/migrate.mjs` applies the canonical baseline at version 13, then all migrations >13. This prevents historical ALTER migrations from replaying against the baseline while installing newer feature tables/columns.
 
 ## Implemented status
 
@@ -70,7 +70,7 @@ Elapsed time, per-minute rounding, persisted pause periods, pause/resume, partic
 
 ### Admin sessions — PARTIAL / IMPROVED
 
-Live floor, station start, participant management, pause/resume and grouping exist. Sessions API/dashboard now use server-computed live gaming charges plus food balance for active/paused sessions.
+Live floor, station start, participant management, pause/resume and grouping exist. Sessions API/dashboard use server-computed live gaming charges plus food balance for active/paused sessions.
 
 ### Station QR — PARTIAL
 
@@ -78,47 +78,48 @@ Resolver, station-aware customer URL, active-session binding, QR generation and 
 
 ### Group billing/settlement — STRONG FOUNDATION / PARTIAL
 
-2–20 active sessions, attribution and open/close lifecycle exist.
+2–20 active sessions, attribution and lifecycle exist. Settlement supports one payer, equal split, custom amounts, by PC/session, by food item, mixed gaming + food, partial settlement, overpayment protection, transaction-safe allocation, finance entry and live totals reduced by previous allocations.
 
-Settlement supports:
-
-- one payer
-- equal split
-- custom payer amounts
-- by PC/session
-- by food item
-- mixed gaming + food
-- partial settlement
-- overpayment protection
-- transaction-safe allocation
-- settlement/payer/allocation records
-- finance revenue ledger entry
-- live totals reduced by previous allocations
-- close blocked until all group sessions are ENDED and outstanding is zero
-
-Staff settlement accepts only captured CASH/UPI/CARD/OTHER. Group Razorpay checkout is intentionally future work.
+Group close requires all sessions to be ENDED and outstanding to be zero. Staff settlement accepts only CASH/UPI/CARD/OTHER; group Razorpay checkout is future work.
 
 ### Bookings — STRONGER PARTIAL
 
-Create, station assignment, future validation, conflict detection, cancellation, check-in and no-show exist.
+Create, station assignment, validation, conflicts, cancellation, check-in and no-show exist.
 
-New handoff lifecycle:
+Handoff lifecycle:
 
 ```text
 BOOKING -> CHECK-IN -> START SESSION -> BOOKING.session_id
 ```
 
-Migrations 015/016 add booking-to-session and optional customer linkage. A checked-in booking starts only inside its booked time window, only if its station is available, and only once. The created session inherits the booking end time. If `customer_id` exists, an initial session participant is created with server-side rate/membership snapshot.
+Migrations 015/016 add booking/session and optional customer linkage. A checked-in booking can start only inside its booked window, only when its station is available, and only once. The created session inherits the booking end time. If `customer_id` exists, an initial participant is created with server-side rate/membership snapshot.
 
 Remaining: customer/member lookup UI, deposit payment/reconciliation, cancellation/refund policy and richer calendar/timeline.
 
 ### Orders/KDS — PARTIAL
 
-Live admin queue, status progression and counter payment authorization exist. Full KDS, realtime events, customer status, stock decrement, modifiers and cancellation/void remain.
+Live admin queue, status progression and counter payment authorization exist. Full KDS, inventory, customer order status, modifiers and cancellation/void remain.
 
 ### Finance — PARTIAL
 
 Finance ledger, expenses, food revenue and group settlement revenue exist. Need final ledger-vs-derived reconciliation, membership/deposit/refund entries, cash drawer and daily close.
+
+### Realtime — FOUNDATION / PARTIAL
+
+New LAN realtime foundation:
+
+- `lib/realtime.ts` in-process event bus
+- authenticated `GET /api/events` SSE endpoint
+- 15-second heartbeat
+- session lifecycle events
+- participant join/leave events
+- billing events
+- group settlement/payment events
+- order creation/status/payment events
+- booking lifecycle events
+- sessions UI subscribes to SSE with 30-second polling fallback
+
+Remaining: publish all mutations consistently, customer/KDS subscriptions, reconnect/replay semantics and multi-process deployment guarantees.
 
 ### Inventory — NOT COMPLETE
 
@@ -136,10 +137,6 @@ Backend foundations exist. Full lifecycle/history/search UI, staff CRUD, passwor
 
 Need food/gaming/group/combined receipts, Razorpay/counter refunds, partial refunds, reversals and reconciliation.
 
-### Realtime — NOT COMPLETE
-
-Polling remains. Target LAN event bus/SSE/WebSocket for sessions, participants, billing, orders, payments, bookings, stations and inventory.
-
 ### Hardware/health/backups — NOT COMPLETE
 
 Need station agents/state machine, WOL/graceful shutdown, console/VR/MOZA adapters, heartbeat, DB/service health and tested backups/restores.
@@ -154,13 +151,14 @@ Need station agents/state machine, WOL/graceful shutdown, console/VR/MOZA adapte
 - Group close requires every session to be ENDED and outstanding balance to be zero.
 - Group Razorpay is not marked captured without a verified gateway flow.
 - Finance corrections use explicit ledger transactions.
+- SSE is an acceleration layer, not a replacement for MySQL source-of-truth reads.
 
 ## Immediate next work
 
 1. Verify CI for newest head and fix any regression.
 2. Add automated billing/group-settlement tests.
 3. Finish booking customer/member lookup and deposit reconciliation.
-4. Implement LAN realtime event bus/SSE/WebSocket.
+4. Complete realtime publication/subscriptions/reconnect semantics.
 5. Build full KDS.
 6. Build inventory/COGS.
 7. Build menu/gaming/station configuration admin.
@@ -206,7 +204,9 @@ Plus reliable fresh bootstrap/upgrades, CI, authorization, payments, inventory, 
 - Added group settlement migration 014 and transaction-safe settlement/allocation engine.
 - Added one/equal/custom/by-PC/by-food settlement UI.
 - Added partial settlement, overpayment protection and group-close validation.
-- Restricted group settlement to actually captured staff-recorded methods.
-- Added booking -> checked-in -> session handoff with migrations 015/016.
-- Added optional booking customer linkage and initial participant creation on handoff.
+- Restricted group settlement to captured staff-recorded methods.
+- Added booking -> checked-in -> session handoff with migrations 015/016 and optional customer linkage.
+- Added LAN in-process realtime event bus and authenticated SSE endpoint.
+- Published session, participant, group, order and booking events.
+- Added SSE refresh to the admin sessions page with polling fallback.
 - Updated README and this state document after the changes.
