@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createOrder, listOrders, advanceOrder, type OrderItem, type PaymentMode } from '@/lib/store';
+import { createOrder, listOrders, advanceOrder, type OrderItem, type PaymentMode } from '../../../lib/store';
 
 export async function GET(){ return NextResponse.json({ok:true,orders:listOrders()}); }
 
