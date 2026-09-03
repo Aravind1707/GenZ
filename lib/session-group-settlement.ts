@@ -41,23 +41,34 @@ export async function settleGroup(input:{groupId:string;method:SettlementMethod;
  const total=money(payers.reduce((n,p)=>n+p.amount,0));if(!total)throw Error('Settlement amount must be greater than zero');
  const outstanding=sources.reduce((n,s)=>n+s.outstanding,0);if(total>outstanding)throw Error(`Settlement exceeds outstanding balance of ₹${outstanding}`);
  let allocations=(input.allocations||[]).map(a=>({payerIndex:Number(a.payerIndex),sourceType:a.sourceType,sourceId:String(a.sourceId),amount:money(Number(a.amount))})).filter(a=>a.amount>0);
- if(allocations.length){
-   if(allocations.some(a=>a.payerIndex<0||a.payerIndex>=payers.length))throw Error('Invalid payer allocation');
- }else{
-   let sourceIndex=0,sourceRemaining=sources[0]?.outstanding||0;
-   for(let pi=0;pi<payers.length;pi++){let remaining=payers[pi].amount;while(remaining>0){while(sourceIndex<sources.length&&sourceRemaining<=0){sourceIndex++;sourceRemaining=sources[sourceIndex]?.outstanding||0}if(sourceIndex>=sources.length)throw Error('Unable to allocate settlement');const take=Math.min(remaining,sourceRemaining);allocations.push({payerIndex:pi,sourceType:sources[sourceIndex].sourceType,sourceId:sources[sourceIndex].sourceId,amount:take});remaining-=take;sourceRemaining-=take;}}
- }
+ if(allocations.length){if(allocations.some(a=>a.payerIndex<0||a.payerIndex>=payers.length))throw Error('Invalid payer allocation');}
+ else{let sourceIndex=0,sourceRemaining=sources[0]?.outstanding||0;for(let pi=0;pi<payers.length;pi++){let remaining=payers[pi].amount;while(remaining>0){while(sourceIndex<sources.length&&sourceRemaining<=0){sourceIndex++;sourceRemaining=sources[sourceIndex]?.outstanding||0}if(sourceIndex>=sources.length)throw Error('Unable to allocate settlement');const take=Math.min(remaining,sourceRemaining);allocations.push({payerIndex:pi,sourceType:sources[sourceIndex].sourceType,sourceId:sources[sourceIndex].sourceId,amount:take});remaining-=take;sourceRemaining-=take;}}}
  const allocatedTotal=money(allocations.reduce((n,a)=>n+a.amount,0));if(allocatedTotal!==total)throw Error('Payer amounts must equal allocated settlement amount');
  const payerAllocated=payers.map((_,i)=>money(allocations.filter(a=>a.payerIndex===i).reduce((n,a)=>n+a.amount,0)));if(payerAllocated.some((n,i)=>n!==payers[i].amount))throw Error('Each payer amount must equal its allocations');
  const sourceAllocated=new Map<string,number>();for(const a of allocations){const key=`${a.sourceType}:${a.sourceId}`,source=sourceMap.get(key);if(!source)throw Error('Settlement source is not outstanding for this group');const next=(sourceAllocated.get(key)||0)+a.amount;if(next>source.outstanding)throw Error(`Settlement exceeds ${source.label}`);sourceAllocated.set(key,next);}
  const settlementId=id('SET');await c.execute('INSERT INTO group_settlements(id,group_id,method,amount,status,created_by,created_at) VALUES(?,?,?,?,\'CAPTURED\',?,NOW(3))',[settlementId,input.groupId,input.method,total,input.staffId]);
  const payerIds:string[]=[];for(const p of payers){const pid=id('PAYER');payerIds.push(pid);await c.execute('INSERT INTO group_settlement_payers(id,settlement_id,customer_id,label,amount) VALUES(?,?,?,?,?)',[pid,settlementId,p.customerId||null,p.label,p.amount]);}
  for(const a of allocations){const source=sourceMap.get(`${a.sourceType}:${a.sourceId}`)!;await c.execute('INSERT INTO group_settlement_allocations(id,settlement_id,payer_id,source_type,source_id,session_id,order_id,amount,created_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('ALLOC'),settlementId,payerIds[a.payerIndex],a.sourceType,a.sourceId,source.sessionId,source.orderId||null,a.amount]);}
- // A food order becomes PAID only after every item is fully settled.
- for(const source of sources.filter(s=>s.sourceType==='FOOD_ORDER_ITEM')){const allocatedNow=sourceAllocated.get(`FOOD_ORDER_ITEM:${source.sourceId}`)||0;if(allocatedNow>=source.outstanding){const[items]=await c.query<RowDataPacket[]>('SELECT oi.id,oi.qty,oi.unit_price FROM order_items oi WHERE oi.id=?',[source.sourceId]);if(items[0]){const[sum]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'FOOD_ORDER_ITEM\' AND source_id=?',[source.sourceId]);if(Number(sum[0]?.total||0)>=Number(items[0].qty)*Number(items[0].unit_price)){await c.execute("UPDATE orders o JOIN order_items oi ON oi.order_id=o.id SET o.payment_status='PAID',o.paid_at=NOW(3) WHERE oi.id=? AND o.payment_status IN ('UNPAID','FAILED')",[source.sourceId]);}}}}
- // Each settled food order gets a payment transaction for audit; the group settlement remains the single customer payment event.
+ // A food order is PAID only when every non-cancelled item in that order is fully allocated.
+ const touchedOrders=[...new Set(allocations.filter(a=>a.sourceType==='FOOD_ORDER_ITEM').map(a=>sourceMap.get(`FOOD_ORDER_ITEM:${a.sourceId}`)?.orderId).filter((v):v is string=>Boolean(v)))];
+ for(const orderId of touchedOrders){
+   const [orderRows]=await c.query<RowDataPacket[]>('SELECT id,payment_status,total FROM orders WHERE id=? FOR UPDATE',[orderId]);
+   if(!orderRows[0]||orderRows[0].payment_status==='PAID')continue;
+   const [itemRows]=await c.query<RowDataPacket[]>('SELECT oi.id,oi.qty,oi.unit_price FROM order_items oi WHERE oi.order_id=?',[orderId]);
+   let fullyAllocated=true;
+   for(const item of itemRows){
+     const [sumRows]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'FOOD_ORDER_ITEM\' AND source_id=?',[item.id]);
+     if(Number(sumRows[0]?.total||0)<Number(item.qty)*Number(item.unit_price)){fullyAllocated=false;break;}
+   }
+   if(fullyAllocated)await c.execute("UPDATE orders SET payment_status='PAID',paid_at=NOW(3) WHERE id=? AND payment_status IN ('UNPAID','FAILED')",[orderId]);
+ }
+ // The payment transaction mirrors the actual group allocation only when the complete order has been paid.
+ // Its amount is the order total, not an individual item's value, and is created once because the order becomes PAID once.
  const[orders]=await c.query<RowDataPacket[]>('SELECT DISTINCT order_id FROM group_settlement_allocations WHERE settlement_id=? AND order_id IS NOT NULL',[settlementId]);
- for(const o of orders){const[order]=await c.query<RowDataPacket[]>('SELECT id,total,payment_status FROM orders WHERE id=?',[o.order_id]);if(order[0]&&order[0].payment_status==='PAID')await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),order[0].id,'COUNTER','CAPTURED',Number(order[0].total),'INR',new Date(),new Date()]);}
+ for(const o of orders){const[order]=await c.query<RowDataPacket[]>('SELECT id,total,payment_status FROM orders WHERE id=?',[o.order_id]);if(order[0]&&order[0].payment_status==='PAID'){
+   const[existing]=await c.query<RowDataPacket[]>('SELECT id FROM payment_transactions WHERE order_id=? AND provider=\'COUNTER\' AND status=\'CAPTURED\' LIMIT 1',[order[0].id]);
+   if(!existing[0])await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),order[0].id,'COUNTER','CAPTURED',Number(order[0].total),'INR',new Date(),new Date()]);
+ }}
  await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[id('FIN'),'REVENUE','GROUP_SETTLEMENT',`Group ${input.groupId} settlement`,total,input.method,'GROUP_SETTLEMENT',settlementId,input.staffId]);
  return{settlementId,groupId:input.groupId,amount:total,method:input.method,payers:payers.map((p,i)=>({...p,id:payerIds[i]})),allocations};
  });}
