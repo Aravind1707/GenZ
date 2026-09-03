@@ -1,26 +1,11 @@
-import { NextResponse } from 'next/server';
-import { createOrder, listOrders, advanceOrder, type OrderItem, type PaymentMode } from '../../../lib/store';
-
-export async function GET() {
-  try { return NextResponse.json({ok:true,orders:await listOrders()},{headers:{'Cache-Control':'no-store'}}); }
-  catch { return NextResponse.json({ok:false,error:'Unable to load orders'},{status:500}); }
-}
-
-export async function POST(request:Request) {
-  try {
-    const body=await request.json();
-    const items=Array.isArray(body?.items)?body.items as OrderItem[]:[];
-    const paymentMode=body?.paymentMode as PaymentMode;
-    if(typeof body?.sessionId!=='string'||body.sessionId.length<1||body.sessionId.length>64) return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
-    if(!['PAY_NOW','ADD_TO_BILL','WALLET'].includes(paymentMode)) return NextResponse.json({ok:false,error:'Invalid payment mode'},{status:400});
-    return NextResponse.json({ok:true,order:await createOrder({sessionId:body.sessionId,items,paymentMode})},{status:201});
-  } catch(error) { return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to create order'},{status:400}); }
-}
-
-export async function PATCH(request:Request) {
-  try {
-    const body=await request.json(); const orderId=typeof body?.orderId==='string'?body.orderId:'';
-    if(!orderId||orderId.length>64) return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
-    return NextResponse.json({ok:true,order:await advanceOrder(orderId)});
-  } catch(error) { return NextResponse.json({ok:false,error:error instanceof Error?error.message:'Unable to update order'},{status:400}); }
-}
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {getCustomerByToken} from '../../../lib/customer-auth';
+import {createFoodOrder,markCounterPaid} from '../../../lib/food-orders';
+import {createRazorpayOrder,getRazorpayKeyId} from '../../../lib/razorpay';
+import {advanceOrder,listOrders} from '../../../lib/store';
+import {pool} from '../../../lib/mysql';
+const customer=async()=>{const t=(await cookies()).get('genz_customer')?.value;return t?getCustomerByToken(t):null};
+export async function GET(){try{return NextResponse.json({ok:true,orders:await listOrders()},{headers:{'Cache-Control':'no-store'}})}catch{return NextResponse.json({ok:false,error:'Unable to load orders'},{status:500})}}
+export async function POST(req:Request){try{const c=await customer();if(!c)return NextResponse.json({ok:false,error:'Login required'},{status:401});const b=await req.json();if(typeof b?.sessionId!=='string'||!Array.isArray(b?.items)||!['PAY_NOW','COUNTER'].includes(b?.paymentMode))return NextResponse.json({ok:false,error:'Invalid request'},{status:400});const o=await createFoodOrder({sessionId:b.sessionId,customerId:c.id,items:b.items,paymentMode:b.paymentMode});if(o.paymentMode==='COUNTER')return NextResponse.json({ok:true,order:o},{status:201});const rp=await createRazorpayOrder({amountRupees:o.total,receipt:o.id});await pool.execute('UPDATE orders SET razorpay_order_id=?,payment_status=\'PENDING\' WHERE id=?',[rp.id,o.id]);await pool.execute('INSERT INTO payment_transactions(id,order_id,provider,provider_order_id,status,amount,currency,created_at,updated_at) VALUES(UUID(),?,\'RAZORPAY\',?,\'PENDING\',?,\'INR\',NOW(3),NOW(3))',[o.id,rp.id,o.total]);return NextResponse.json({ok:true,order:o,razorpay:{keyId:getRazorpayKeyId(),orderId:rp.id,amount:rp.amount,currency:'INR'}},{status:201})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to create order'},{status:400})}}
+export async function PATCH(req:Request){try{const b=await req.json();if(b?.action==='counter-paid'&&typeof b.orderId==='string')return NextResponse.json({ok:true,paid:await markCounterPaid(b.orderId)});if(typeof b?.orderId==='string')return NextResponse.json({ok:true,order:await advanceOrder(b.orderId)});return NextResponse.json({ok:false,error:'Invalid request'},{status:400})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to update order'},{status:400})}}
