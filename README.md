@@ -147,26 +147,17 @@ Implemented foundation:
 - **authoritative live gaming total in the sessions API and dashboard**
 - session extension protection
 
-The admin session total now combines server-computed live gaming charges with the session food balance instead of relying on a stale gaming balance while a session is active.
+The admin session total combines server-computed live gaming charges with food balance instead of relying on stale stored gaming balance while a session is active.
 
 ### Gaming billing
 
-Server-authoritative billing supports:
-
-- elapsed time
-- per-minute rounding
-- persisted pause periods
-- participant-specific join/leave intervals
-- member/non-member rate snapshots
-- finalization
-
-Pause periods are persisted in `session_pause_periods` rather than relying only on cumulative counters.
+Server-authoritative billing supports elapsed time, per-minute rounding, persisted pause periods, participant-specific join/leave intervals, member/non-member rate snapshots and finalization.
 
 ### Groups and settlement
 
 Open groups support 2–20 active sessions while retaining individual attribution.
 
-The settlement engine now supports:
+The settlement engine supports:
 
 - one payer
 - equal split
@@ -177,9 +168,11 @@ The settlement engine now supports:
 - partial settlement
 - overpayment protection
 - transaction-safe source allocation
-- settlement/payment audit records
+- settlement/payer/allocation records
 - finance ledger entry
-- group close protection while money remains outstanding
+- close protection until all sessions are ended and all money is settled
+
+Group totals are calculated from live gaming billing plus unpaid/failed food, less previous settlement allocations.
 
 Settlement tables:
 
@@ -187,9 +180,7 @@ Settlement tables:
 - `group_settlement_payers`
 - `group_settlement_allocations`
 
-Group totals are calculated from **live gaming billing plus unpaid/failed food**, less previously allocated settlements.
-
-Online Razorpay is intentionally not offered by the staff group-settlement UI yet; only captured staff-recorded methods (cash, UPI, card, other) are accepted until a dedicated group Razorpay flow is implemented and verified.
+Group settlement UI currently records only captured staff payment methods: cash, UPI, card and other. A dedicated verified Razorpay group checkout remains future work.
 
 ### Bookings
 
@@ -201,10 +192,15 @@ Implemented:
 - conflict detection
 - cancellation
 - check-in tracking
-- no-show action after the booking has ended
+- no-show action after booking end
+- **checked-in booking -> session handoff**
+- booking/session linkage
+- customer linkage foundation
 - audit events for booking lifecycle actions
 
-Automatic booking-to-session handoff, deposit reconciliation and customer/member lookup remain.
+A checked-in booking can be started only inside its booked time window, only if the station is actually available, and only once. The created session inherits the booked end time so the booking window remains authoritative.
+
+Automatic deposit payment/reconciliation, customer/member lookup UI and richer calendar/timeline workflows remain.
 
 ### Orders / kitchen
 
@@ -212,11 +208,11 @@ Implemented admin order queue with status progression and counter payment author
 
 ### Finance
 
-`finance_transactions` is part of the canonical schema and supports revenue/expense ledger entries, source attribution and payment methods. Group settlements now create explicit finance revenue entries. The next finance stage is reconciliation across gaming, food, memberships, deposits and refunds without double-counting.
+`finance_transactions` supports revenue/expense ledger entries, source attribution and payment methods. Group settlements create explicit finance revenue entries. The next finance stage is reconciliation across gaming, food, memberships, deposits and refunds without double-counting.
 
 ## Database and migrations
 
-`db/mysql-schema.sql` is the canonical baseline through the current booking-check-in schema. Incremental migrations remain authoritative for newer production features.
+`db/mysql-schema.sql` is the canonical baseline through booking check-in and finance ledger. Newer production features are delivered as incremental migrations.
 
 Current migration sequence includes:
 
@@ -227,8 +223,10 @@ Current migration sequence includes:
 - `012_session_pause_periods.sql`
 - `013_booking_checkin.sql`
 - `014_group_settlements.sql`
+- `015_booking_session_handoff.sql`
+- `016_booking_customer_link.sql`
 
-For a fresh database, `scripts/migrate.mjs` applies the canonical baseline and then runs the newest incremental migration so migration 014 is installed without replaying historical ALTER migrations.
+For a fresh database, `scripts/migrate.mjs` applies the canonical baseline at version 13 and then applies incremental migrations 014 onward. This avoids replaying historical ALTER migrations against the complete baseline while still installing newer feature tables/columns.
 
 Existing databases apply only unapplied migration versions.
 
@@ -313,14 +311,16 @@ CI currently runs `npm install` followed by `npm run build` on pushes and pull r
 - audit logging foundation
 - live sessions/orders/bookings UI
 - booking check-in/no-show
+- checked-in booking to session handoff
+- session-to-booking linkage
 - session groups foundation
-- **group settlement engine and allocation ledger**
+- group settlement engine and allocation ledger
 - finance ledger foundation
-- migration runner and canonical baseline
+- migration runner with fresh baseline + incremental migrations
 
 ### Remaining to reach production-complete
 
-1. Finish booking automatic session handoff and deposit reconciliation.
+1. Booking deposit payment/reconciliation and customer/member lookup UI.
 2. LAN realtime event bus/SSE/WebSocket.
 3. Full KDS.
 4. Inventory, stock accounting and COGS.
@@ -339,7 +339,7 @@ CI currently runs `npm install` followed by `npm run build` on pushes and pull r
 17. Supported Next.js upgrade and compatibility validation.
 18. Final admin-PC/LAN deployment and bootstrap validation.
 
-Next.js 14.2.15 remains in the repository temporarily for compatibility work. The project should move to a supported release before production deployment.
+Next.js 14.2.15 remains temporarily for compatibility; it must be upgraded to a supported release before production.
 
 ## Development order
 
