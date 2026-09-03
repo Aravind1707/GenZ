@@ -7,6 +7,7 @@ const MAX_ATTEMPTS=5;
 const SESSION_DAYS=30;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const id=(prefix:string)=>`${prefix}-${randomUUID()}`;
+type CustomerRow={id:string;mobile:string;name:string|null;member_id:string|null};
 
 export function normalizeMobile(value:string){
   const digits=value.replace(/\D/g,'');
@@ -60,10 +61,10 @@ export async function verifyCustomerOtp(challengeId:string,rawMobile:string,otp:
     await connection.execute('UPDATE customer_otp_challenges SET consumed_at=? WHERE id=?',[new Date(),challengeId]);
     const [members]=await connection.query<(RowDataPacket & {id:string;name:string;mobile:string;active:number;expires_at:string})[]>('SELECT id,name,mobile,active,expires_at FROM members WHERE mobile=? LIMIT 1',[mobile]);
     const member=members[0];
-    const [existing]=await connection.query<(RowDataPacket & {id:string;mobile:string;name:string|null;member_id:string|null})[]>('SELECT * FROM customers WHERE mobile=? LIMIT 1',[mobile]);
-    let customer=existing[0];
-    if(!customer){const customerId=id('CUS');await connection.execute('INSERT INTO customers(id,mobile,name,member_id,created_at,updated_at) VALUES (?,?,?,?,?,?)',[customerId,mobile,member?.name||null,member?.id||null,new Date(),new Date()]);customer={id:customerId,mobile,name:member?.name||null,member_id:member?.id||null};}
-    else {await connection.execute('UPDATE customers SET name=COALESCE(?,name),member_id=?,updated_at=? WHERE id=?',[member?.name||null,member?.id||null,new Date(),customer.id]);customer={...customer,member_id:member?.id||null,name:member?.name||customer.name};}
+    const [existing]=await connection.query<(RowDataPacket & CustomerRow)[]>('SELECT id,mobile,name,member_id FROM customers WHERE mobile=? LIMIT 1',[mobile]);
+    let customer:CustomerRow|undefined=existing[0] as CustomerRow|undefined;
+    if(!customer){const customerId=id('CUS');const customerName=member?.name||null;const memberId=member?.id||null;await connection.execute('INSERT INTO customers(id,mobile,name,member_id,created_at,updated_at) VALUES (?,?,?,?,?,?)',[customerId,mobile,customerName,memberId,new Date(),new Date()]);customer={id:customerId,mobile,name:customerName,member_id:memberId};}
+    else {const customerName=member?.name||customer.name;const memberId=member?.id||null;await connection.execute('UPDATE customers SET name=COALESCE(?,name),member_id=?,updated_at=? WHERE id=?',[member?.name||null,memberId,new Date(),customer.id]);customer={...customer,member_id:memberId,name:customerName};}
     const token=randomUUID();
     await connection.execute('INSERT INTO customer_sessions(id,customer_id,session_token_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?)',[id('CS'),customer.id,hash(token),new Date(Date.now()+SESSION_DAYS*86400000),new Date(),new Date()]);
     return {token,customer:{id:customer.id,mobile:customer.mobile,name:customer.name,memberId:customer.member_id}};
