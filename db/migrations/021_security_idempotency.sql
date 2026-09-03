@@ -6,9 +6,8 @@ USE genz_os;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_idempotency_key VARCHAR(100) NULL;
 ALTER TABLE orders ADD UNIQUE KEY uq_orders_session_idempotency(session_id,client_idempotency_key);
 
--- Provider identifiers are payment identities, not merely metadata. Prevent a
--- Razorpay payment/order from being captured twice in the payment ledger.
-ALTER TABLE payment_transactions ADD UNIQUE KEY uq_payment_provider_order(provider,provider_order_id);
+-- A Razorpay payment ID is a single capture identity. The order-level lock and
+-- provider-order check in the application prevent reuse of a gateway order.
 ALTER TABLE payment_transactions ADD UNIQUE KEY uq_payment_provider_payment(provider,provider_payment_id);
 
 INSERT INTO schema_migrations(version,applied_at) VALUES(21,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at;
