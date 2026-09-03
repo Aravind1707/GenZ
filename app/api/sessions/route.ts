@@ -1,4 +1,5 @@
 import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
 import {listSessions,startSession,endSession} from '../../../lib/store';
 import {COOKIE,requireStaff,audit} from '../../../lib/staff-auth';
 import {pool} from '../../../lib/mysql';
