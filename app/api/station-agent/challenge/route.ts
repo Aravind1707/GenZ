@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {authorizeStationAgent,issueStationChallenge} from '../../../../../lib/station-challenges';
+import {authorizeStationAgent,issueStationChallenge} from '../../../../lib/station-challenges';
 
 export async function POST(request:Request){
   try{
