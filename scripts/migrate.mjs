@@ -9,6 +9,8 @@ try{
  await connection.query("INSERT INTO schema_migrations(version,applied_at) VALUES(1,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at");
  const dir=path.join(process.cwd(),'db/migrations');
  const files=(await fs.readdir(dir)).filter(f=>/^\d+_.*\.sql$/.test(f)).sort((a,b)=>Number(a.match(/^\d+/)[0])-Number(b.match(/^\d+/)[0])||a.localeCompare(b));
+ const versions=new Map();
+ for(const file of files){const version=Number(file.match(/^\d+/)[0]);const existing=versions.get(version);if(existing)throw new Error(`Duplicate migration version ${version}: ${existing} and ${file}`);versions.set(version,file);}
  const [appliedRows]=await connection.query('SELECT version FROM schema_migrations');
  const applied=new Set(appliedRows.map(r=>Number(r.version)));
  for(const file of files){const version=Number(file.match(/^\d+/)[0]);if(applied.has(version))continue;console.log(`Applying ${file}`);await connection.query(await fs.readFile(path.join(dir,file),'utf8'));}
