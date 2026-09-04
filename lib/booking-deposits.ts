@@ -16,7 +16,7 @@ export async function recordBookingDeposit(input:{bookingId:string;amount:number
     if(!required)throw Error('NO_DEPOSIT_REQUIRED');if(amount>outstanding)throw Error('DEPOSIT_PAYMENT_EXCEEDS_OUTSTANDING');
     const paymentId=`BDP-${randomUUID()}`;
     await c.execute('INSERT INTO booking_deposit_payments(id,booking_id,amount,method,status,created_by,created_at) VALUES(?,?,?,? ,\'CAPTURED\',?,NOW(3))',[paymentId,bookingId,amount,input.method,input.staffId]);
-    await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[`FIN-${randomUUID()}`,'REVENUE','BOOKING_DEPOSIT',`Booking deposit · ${bookingId}`,amount,input.method,'BOOKING_DEPOSIT_PAYMENT',paymentId,input.staffId]);
+    await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[`FIN-${randomUUID()}`,'REVENUE','BOOKING_DEPOSIT_ADVANCE',`Booking deposit advance · ${bookingId}`,amount,input.method,'BOOKING_DEPOSIT_PAYMENT',paymentId,input.staffId]);
     return {paymentId,bookingId,amount,method:input.method,required,paidAmount:paidAmount+amount,outstanding:Math.max(0,outstanding-amount)};
   });
 }
