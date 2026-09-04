@@ -18,7 +18,8 @@ async function sourcesFor(c:PoolConnection,groupId:string):Promise<SettlementSou
  for(const sessionId of sessionIds){
    const billing=await calculateSessionBilling(sessionId,c);
    const [allocated]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'GAMING_SESSION\' AND source_id=?',[sessionId]);
-   const outstanding=Math.max(0,billing.gamingTotal-Number(allocated[0]?.total||0));
+   const [deposit]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM booking_deposit_applications WHERE session_id=?',[sessionId]);
+   const outstanding=Math.max(0,billing.gamingTotal-Number(allocated[0]?.total||0)-Number(deposit[0]?.total||0));
    if(outstanding>0)sources.push({sourceType:'GAMING_SESSION',sourceId:sessionId,sessionId,label:`Gaming · ${billing.stationId}`,outstanding});
  }
  const p=sessionIds.map(()=>'?').join(',');
@@ -49,27 +50,9 @@ export async function settleGroup(input:{groupId:string;method:SettlementMethod;
  const settlementId=id('SET');await c.execute('INSERT INTO group_settlements(id,group_id,method,amount,status,created_by,created_at) VALUES(?,?,?,?,\'CAPTURED\',?,NOW(3))',[settlementId,input.groupId,input.method,total,input.staffId]);
  const payerIds:string[]=[];for(const p of payers){const pid=id('PAYER');payerIds.push(pid);await c.execute('INSERT INTO group_settlement_payers(id,settlement_id,customer_id,label,amount) VALUES(?,?,?,?,?)',[pid,settlementId,p.customerId||null,p.label,p.amount]);}
  for(const a of allocations){const source=sourceMap.get(`${a.sourceType}:${a.sourceId}`)!;await c.execute('INSERT INTO group_settlement_allocations(id,settlement_id,payer_id,source_type,source_id,session_id,order_id,amount,created_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('ALLOC'),settlementId,payerIds[a.payerIndex],a.sourceType,a.sourceId,source.sessionId,source.orderId||null,a.amount]);}
- // A food order is PAID only when every non-cancelled item in that order is fully allocated.
  const touchedOrders=[...new Set(allocations.filter(a=>a.sourceType==='FOOD_ORDER_ITEM').map(a=>sourceMap.get(`FOOD_ORDER_ITEM:${a.sourceId}`)?.orderId).filter((v):v is string=>Boolean(v)))];
- for(const orderId of touchedOrders){
-   const [orderRows]=await c.query<RowDataPacket[]>('SELECT id,payment_status,total FROM orders WHERE id=? FOR UPDATE',[orderId]);
-   if(!orderRows[0]||orderRows[0].payment_status==='PAID')continue;
-   const [itemRows]=await c.query<RowDataPacket[]>('SELECT oi.id,oi.qty,oi.unit_price FROM order_items oi WHERE oi.order_id=?',[orderId]);
-   let fullyAllocated=true;
-   for(const item of itemRows){
-     const [sumRows]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'FOOD_ORDER_ITEM\' AND source_id=?',[item.id]);
-     if(Number(sumRows[0]?.total||0)<Number(item.qty)*Number(item.unit_price)){fullyAllocated=false;break;}
-   }
-   if(fullyAllocated)await c.execute("UPDATE orders SET payment_status='PAID',paid_at=NOW(3) WHERE id=? AND payment_status IN ('UNPAID','FAILED')",[orderId]);
- }
- // Record the food amount actually paid by this settlement. For partial settlements this is only
- // the current allocation, while the final settlement records only the remaining amount.
- // This avoids overstating payment event accounting with the order's full total.
- const orderAmounts=new Map<string,number>();
- for(const a of allocations){if(a.sourceType!=='FOOD_ORDER_ITEM')continue;const orderId=sourceMap.get(`FOOD_ORDER_ITEM:${a.sourceId}`)?.orderId;if(orderId)orderAmounts.set(orderId,(orderAmounts.get(orderId)||0)+a.amount);}
- for(const [orderId,amount] of orderAmounts){if(amount<=0)continue;
-   await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),orderId,'COUNTER','CAPTURED',amount,'INR',new Date(),new Date()]);
- }
+ for(const orderId of touchedOrders){const [orderRows]=await c.query<RowDataPacket[]>('SELECT id,payment_status,total FROM orders WHERE id=? FOR UPDATE',[orderId]);if(!orderRows[0]||orderRows[0].payment_status==='PAID')continue;const[itemRows]=await c.query<RowDataPacket[]>('SELECT oi.id,oi.qty,oi.unit_price FROM order_items oi WHERE oi.order_id=?',[orderId]);let fullyAllocated=true;for(const item of itemRows){const[sumRows]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'FOOD_ORDER_ITEM\' AND source_id=?',[item.id]);if(Number(sumRows[0]?.total||0)<Number(item.qty)*Number(item.unit_price)){fullyAllocated=false;break;}}if(fullyAllocated)await c.execute("UPDATE orders SET payment_status='PAID',paid_at=NOW(3) WHERE id=? AND payment_status IN ('UNPAID','FAILED')",[orderId]);}
+ const orderAmounts=new Map<string,number>();for(const a of allocations){if(a.sourceType!=='FOOD_ORDER_ITEM')continue;const orderId=sourceMap.get(`FOOD_ORDER_ITEM:${a.sourceId}`)?.orderId;if(orderId)orderAmounts.set(orderId,(orderAmounts.get(orderId)||0)+a.amount);}for(const [orderId,amount] of orderAmounts){if(amount<=0)continue;await c.execute('INSERT INTO payment_transactions(id,order_id,provider,status,amount,currency,created_at,updated_at,captured_at) VALUES(?,?,?,?,?,?,?,?,NOW(3))',[id('PAY'),orderId,'COUNTER','CAPTURED',amount,'INR',new Date(),new Date()]);}
  await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[id('FIN'),'REVENUE','GROUP_SETTLEMENT',`Group ${input.groupId} settlement`,total,input.method,'GROUP_SETTLEMENT',settlementId,input.staffId]);
  return{settlementId,groupId:input.groupId,amount:total,method:input.method,payers:payers.map((p,i)=>({...p,id:payerIds[i]})),allocations};
  });}
