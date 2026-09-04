@@ -8,24 +8,26 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 
 - MySQL source of truth with incremental migrations and CI build validation.
 - Customer mobile + OTP authentication with hashed, rate-limited challenges and hashed customer sessions.
+- Customer session-management screen with current-device sign-out and sign-out-other-devices controls.
 - Server-authoritative membership recognition and dynamic member/non-member pricing.
 - Gaming price list and food ordering with **Pay Now** / **Pay at Counter** only.
 - Razorpay order/signature/webhook foundation and food payment idempotency.
 - Transactional food inventory reservation, release and consumption.
-- Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent.
+- Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent, with member pricing rates snapshotted at participant creation.
 - Active/paused/ended sessions, participant-level pause-aware billing, server-side rate snapshots and session extensions.
 - Individual session settlement for gaming + unpaid food, plus multi-session group billing with equal/custom/by-session/by-food allocation.
 - Booking creation, conflicts, check-in/no-show, booking-to-session handoff and deposit collection/application/refund lifecycle.
+- Booking deposits are treated as advances in finance reporting rather than earned revenue.
 - Staff authentication/RBAC, audit logging, finance ledger and LAN SSE realtime foundation.
 - Admin screens for sessions, settlements, bookings, food orders, kitchen, finance, members, stations and inventory.
 
 ## Accounting invariants
 
-Every payment is recorded transactionally and attributed to its source. Session settlement cannot exceed the server-calculated outstanding balance, cannot be captured against an open billing group, and is idempotent when a client supplies an idempotency key. Booking deposits are tracked separately, can be applied once to a linked session, and any unused remainder must be refunded before a billing group can close.
+Every payment is recorded transactionally and attributed to its source. Session settlement cannot exceed the server-calculated outstanding balance, cannot be captured against an open billing group, and is idempotent when a client supplies an idempotency key. Booking deposits are tracked separately, can be applied against the combined final session tab (gaming plus unpaid food), and any unused remainder must be refunded before a billing group can close.
 
 ## Station security
 
-Permanent labels such as `PC-01`, `PS5-01` and `MOZA-01` are identifiers, not credentials. A trusted station agent holds a station-specific secret and requests a 32-byte, 60-second challenge. The customer must authenticate with OTP and submit the current challenge; the server locks and consumes it before creating the participant binding. The agent secret must never be shipped to browser JavaScript.
+Permanent labels such as `PC-01`, `PS5-01` and `MOZA-01` are identifiers, not credentials. A trusted station agent holds a station-specific secret and requests a 32-byte, 60-second challenge. The customer must authenticate with OTP and submit the current challenge; the server locks and consumes it before creating the participant binding. The participant receives a server-side snapshot of the applicable regular/member rates at join time. The agent secret must never be shipped to browser JavaScript.
 
 ## Database migrations
 
@@ -41,6 +43,7 @@ The canonical schema is followed by incremental migrations. Current feature migr
 - `023_booking_deposit_allocations.sql`
 - `024_session_settlements.sql`
 - `025_station_challenges.sql`
+- `026_finance_booking_deposit_cleanup.sql`
 
 Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
 
