@@ -9,7 +9,6 @@ const MAX_ATTEMPTS=5;
 // are both 30 days; normal use refreshes last_seen_at without extending the absolute
 // expiry, so a session can never live beyond its original 30-day lifetime.
 const SESSION_DAYS=30;
-const SESSION_IDLE_MS=30*24*60*60*1000;
 const RATE_KEY='__genz_customer_otp_rate__';
 const rateStore=globalThis as typeof globalThis & {[RATE_KEY]?:Map<string,number[]>};
 const otpRates=rateStore[RATE_KEY]??(rateStore[RATE_KEY]=new Map());
