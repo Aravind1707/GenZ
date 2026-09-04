@@ -6,6 +6,54 @@ import {pool} from '../../../../lib/mysql';
 
 async function customer(){const t=(await cookies()).get('genz_customer')?.value;return t?getCustomerByToken(t):null;}
 
-export async function GET(req:Request){try{const c=await customer();if(!c)return NextResponse.json({ok:false,error:'Login required'},{status:401});const id=new URL(req.url).searchParams.get('sessionId')||'';if(!id||id.length>64)return NextResponse.json({ok:false,error:'Invalid session'},{status:400});const [rows]=await pool.query<any[]>('SELECT id,station_id,status,started_at,scheduled_end_at FROM sessions WHERE id=? AND status IN (\'ACTIVE\',\'PAUSED\') LIMIT 1',[id]);if(!rows.length)return NextResponse.json({ok:false,error:'Session not active'},{status:404});const [participant]=await pool.query<any[]>('SELECT id FROM session_participants WHERE session_id=? AND customer_id=? AND active=TRUE LIMIT 1',[id,c.id]);if(!participant.length)return NextResponse.json({ok:false,error:'You are not a participant in this session'},{status:403});const [station]=await pool.query<any[]>('SELECT id,name,type FROM stations WHERE id=? LIMIT 1',[rows[0].station_id]);const [next]=await pool.query<any[]>('SELECT starts_at FROM bookings WHERE station_id=? AND status NOT IN (\'CANCELLED\',\'NO_SHOW\') AND starts_at>=? ORDER BY starts_at ASC LIMIT 1',[rows[0].station_id,rows[0].scheduled_end_at||new Date()]);return NextResponse.json({ok:true,session:{id:rows[0].id,stationId:rows[0].station_id,station:station[0]?.name||rows[0].station_id,type:station[0]?.type,startedAt:new Date(rows[0].started_at).toISOString(),scheduledEndAt:rows[0].scheduled_end_at?new Date(rows[0].scheduled_end_at).toISOString():null,nextBookingAt:next[0]?.starts_at?new Date(next[0].starts_at).toISOString():null}},{headers:{'Cache-Control':'private,no-store'}})}catch(e){return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Unable to load session'},{status:400})}}
+async function sessionForCustomer(customerId:string,sessionId:string){
+  const [rows]=await pool.query<any[]>('SELECT s.id,s.station_id,s.status,s.started_at,s.scheduled_end_at FROM sessions s JOIN session_participants p ON p.session_id=s.id WHERE s.id=? AND p.customer_id=? AND p.active=TRUE AND s.status IN (\'ACTIVE\',\'PAUSED\') LIMIT 1',[sessionId,customerId]);
+  return rows[0];
+}
 
-export async function POST(req:Request){try{const c=await customer();if(!c)return NextResponse.json({ok:false,error:'Login required'},{status:401});const b=await req.json();const sessionId=typeof b?.sessionId==='string'?b.sessionId:'';const stationId=typeof b?.stationId==='string'?b.stationId:'';const extensionMinutes=Number(b?.extensionMinutes);if(!sessionId||sessionId.length>64||!stationId||stationId.length>64)return NextResponse.json({ok:false,error:'Invalid request'},{status:400});const [match]=await pool.query<any[]>('SELECT id FROM sessions WHERE id=? AND station_id=? AND status IN (\'ACTIVE\',\'PAUSED\') LIMIT 1',[sessionId,stationId]);if(!match.length)return NextResponse.json({ok:false,error:'Session/equipment mismatch'},{status:409});const session=await extendSession({sessionId,customerId:c.id,extensionMinutes});return NextResponse.json({ok:true,session},{headers:{'Cache-Control':'private,no-store'}})}catch(e){const message=e instanceof Error?e.message:'Unable to extend session';if(message.startsWith('NEXT_SESSION_BOOKED:'))return NextResponse.json({ok:false,code:'NEXT_SESSION_BOOKED',error:'The next session for this equipment is already booked, so this session cannot be extended.'},{status:409});return NextResponse.json({ok:false,error:message},{status:400})}}
+async function presentSession(row:any){
+  const [station]=await pool.query<any[]>('SELECT id,name,type FROM stations WHERE id=? LIMIT 1',[row.station_id]);
+  const [next]=await pool.query<any[]>('SELECT starts_at FROM bookings WHERE station_id=? AND status NOT IN (\'CANCELLED\',\'NO_SHOW\') AND starts_at>=? ORDER BY starts_at ASC LIMIT 1',[row.station_id,row.scheduled_end_at||new Date()]);
+  return {id:String(row.id),stationId:String(row.station_id),station:station[0]?.name||row.station_id,type:station[0]?.type,startedAt:new Date(row.started_at).toISOString(),scheduledEndAt:row.scheduled_end_at?new Date(row.scheduled_end_at).toISOString():null,nextBookingAt:next[0]?.starts_at?new Date(next[0].starts_at).toISOString():null};
+}
+
+export async function GET(req:Request){
+  try{
+    const c=await customer();
+    if(!c)return NextResponse.json({ok:false,error:'Login required'},{status:401});
+    const id=new URL(req.url).searchParams.get('sessionId')?.trim()||'';
+    let row:any;
+    if(id){
+      if(id.length>64)return NextResponse.json({ok:false,error:'Invalid session'},{status:400});
+      row=await sessionForCustomer(c.id,id);
+      if(!row)return NextResponse.json({ok:false,error:'Session not active'},{status:404});
+    }else{
+      const [rows]=await pool.query<any[]>('SELECT s.id,s.station_id,s.status,s.started_at,s.scheduled_end_at FROM sessions s JOIN session_participants p ON p.session_id=s.id WHERE p.customer_id=? AND p.active=TRUE AND s.status IN (\'ACTIVE\',\'PAUSED\') ORDER BY s.started_at DESC LIMIT 1',[c.id]);
+      row=rows[0];
+      if(!row)return NextResponse.json({ok:true,session:null},{headers:{'Cache-Control':'private,no-store'}});
+    }
+    return NextResponse.json({ok:true,session:await presentSession(row)},{headers:{'Cache-Control':'private,no-store'}});
+  }catch{return NextResponse.json({ok:false,error:'Unable to load session'},{status:500});}
+}
+
+export async function POST(req:Request){
+  try{
+    const c=await customer();
+    if(!c)return NextResponse.json({ok:false,error:'Login required'},{status:401});
+    const b=await req.json();
+    const sessionId=typeof b?.sessionId==='string'?b.sessionId.trim():'';
+    const stationId=typeof b?.stationId==='string'?b.stationId.trim():'';
+    const extensionMinutes=Number(b?.extensionMinutes);
+    if(!sessionId||sessionId.length>64||!stationId||stationId.length>64)return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
+    const [match]=await pool.query<any[]>('SELECT id FROM sessions WHERE id=? AND station_id=? AND status IN (\'ACTIVE\',\'PAUSED\') LIMIT 1',[sessionId,stationId]);
+    if(!match.length)return NextResponse.json({ok:false,error:'Session/equipment mismatch'},{status:409});
+    const participant=await sessionForCustomer(c.id,sessionId);
+    if(!participant)return NextResponse.json({ok:false,error:'You are not a participant in this session'},{status:403});
+    const session=await extendSession({sessionId,customerId:c.id,extensionMinutes});
+    return NextResponse.json({ok:true,session},{headers:{'Cache-Control':'private,no-store'}});
+  }catch(e){
+    const message=e instanceof Error?e.message:'Unable to extend session';
+    if(message.startsWith('NEXT_SESSION_BOOKED:'))return NextResponse.json({ok:false,code:'NEXT_SESSION_BOOKED',error:'The next session for this equipment is already booked, so this session cannot be extended.'},{status:409});
+    return NextResponse.json({ok:false,error:'Unable to extend session'},{status:400});
+  }
+}
