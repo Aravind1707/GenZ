@@ -1,0 +1,7 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {getCustomerByToken,listCustomerSessions,revokeCustomerSessions} from '../../../../lib/customer-auth';
+
+export const dynamic='force-dynamic';
+export async function GET(){try{const token=(await cookies()).get('genz_customer')?.value||'';const customer=token?await getCustomerByToken(token):null;if(!customer)return NextResponse.json({ok:false,error:'Login required'},{status:401});return NextResponse.json({ok:true,sessions:await listCustomerSessions(customer.id,token)},{headers:{'Cache-Control':'private,no-store'}})}catch{return NextResponse.json({ok:false,error:'Unable to load sessions'},{status:400})}}
+export async function DELETE(req:Request){try{const cookieStore=await cookies();const token=cookieStore.get('genz_customer')?.value||'';const customer=token?await getCustomerByToken(token):null;if(!customer)return NextResponse.json({ok:false,error:'Login required'},{status:401});const body=await req.json().catch(()=>({}));const allOther=body?.action==='REVOKE_OTHERS';if(body?.action!=='REVOKE_CURRENT'&&!allOther)return NextResponse.json({ok:false,error:'Invalid action'},{status:400});const count=await revokeCustomerSessions(customer.id,token,allOther);if(!allOther)cookieStore.delete('genz_customer');return NextResponse.json({ok:true,revoked:count})}catch{return NextResponse.json({ok:false,error:'Unable to update sessions'},{status:400})}}
