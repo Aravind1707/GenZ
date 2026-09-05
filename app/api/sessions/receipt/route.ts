@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {cookies} from 'next/headers';
-import {COOKIE,requireStaff} from '../../../../../lib/staff-auth';
-import {getSessionReceipt} from '../../../../../lib/receipt';
+import {COOKIE,requireStaff} from '../../../../lib/staff-auth';
+import {getSessionReceipt} from '../../../../lib/receipt';
 
 export async function GET(req:Request){
   try{
