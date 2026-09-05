@@ -20,33 +20,4 @@ CREATE TABLE IF NOT EXISTS daily_close_events (
 ALTER TABLE daily_cash_counts
   ADD COLUMN IF NOT EXISTS reopen_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER approved_at;
 
-DROP TRIGGER IF EXISTS trg_finance_txn_closed_insert;
-DROP TRIGGER IF EXISTS trg_finance_txn_closed_update;
-DROP TRIGGER IF EXISTS trg_finance_txn_closed_delete;
-
-CREATE TRIGGER trg_finance_txn_closed_insert BEFORE INSERT ON finance_transactions
-FOR EACH ROW
-BEGIN
-  IF EXISTS (SELECT 1 FROM daily_cash_counts WHERE business_date=DATE(NEW.created_at) AND status='APPROVED') THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='DAILY_CLOSE_PERIOD_LOCKED';
-  END IF;
-END;
-
-CREATE TRIGGER trg_finance_txn_closed_update BEFORE UPDATE ON finance_transactions
-FOR EACH ROW
-BEGIN
-  IF EXISTS (SELECT 1 FROM daily_cash_counts WHERE business_date=DATE(OLD.created_at) AND status='APPROVED')
-     OR EXISTS (SELECT 1 FROM daily_cash_counts WHERE business_date=DATE(NEW.created_at) AND status='APPROVED') THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='DAILY_CLOSE_PERIOD_LOCKED';
-  END IF;
-END;
-
-CREATE TRIGGER trg_finance_txn_closed_delete BEFORE DELETE ON finance_transactions
-FOR EACH ROW
-BEGIN
-  IF EXISTS (SELECT 1 FROM daily_cash_counts WHERE business_date=DATE(OLD.created_at) AND status='APPROVED') THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='DAILY_CLOSE_PERIOD_LOCKED';
-  END IF;
-END;
-
 INSERT INTO schema_migrations(version,applied_at) VALUES(46,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at;
