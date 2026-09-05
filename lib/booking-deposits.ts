@@ -1,11 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
 import {pool,transaction} from './mysql';
+import {assertDailyCloseOpen} from './daily-close-lock';
 
 export type BookingDepositMethod='CASH'|'UPI'|'CARD'|'OTHER';
 
 export async function recordBookingDeposit(input:{bookingId:string;amount:number;method:BookingDepositMethod;staffId:string}){
   return transaction(async(c:PoolConnection)=>{
+    await assertDailyCloseOpen(c);
     const bookingId=input.bookingId.trim();const amount=Number(input.amount);
     if(!bookingId||!Number.isSafeInteger(amount)||amount<=0)throw Error('INVALID_DEPOSIT_PAYMENT');
     if(!['CASH','UPI','CARD','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
@@ -35,6 +37,7 @@ export async function bookingDepositSummary(bookingId:string){
 
 export async function refundBookingDeposit(input:{bookingId:string;amount:number;method:BookingDepositMethod;staffId:string}){
  return transaction(async(c:PoolConnection)=>{
+  await assertDailyCloseOpen(c);
   const bookingId=input.bookingId.trim();const amount=Number(input.amount);if(!bookingId||!Number.isSafeInteger(amount)||amount<=0)throw Error('INVALID_DEPOSIT_REFUND');if(!['CASH','UPI','CARD','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
   const[b]=await c.query<RowDataPacket[]>('SELECT id,deposit,status,session_id FROM bookings WHERE id=? FOR UPDATE',[bookingId]);if(!b[0])throw Error('BOOKING_NOT_FOUND');
   if(!b[0].session_id)throw Error('DEPOSIT_REFUND_REQUIRES_SESSION');
