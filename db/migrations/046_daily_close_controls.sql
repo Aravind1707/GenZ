@@ -18,6 +18,6 @@ CREATE TABLE IF NOT EXISTS daily_close_events (
 ) ENGINE=InnoDB;
 
 ALTER TABLE daily_cash_counts
-  ADD COLUMN IF NOT EXISTS reopen_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER approved_at;
+  ADD COLUMN reopen_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER approved_at;
 
 INSERT INTO schema_migrations(version,applied_at) VALUES(46,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at;
