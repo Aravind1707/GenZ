@@ -1,0 +1,45 @@
+import {randomUUID} from 'node:crypto';
+import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
+import {pool,transaction} from './mysql';
+import {getSessionSettlement,settleSession,type SessionSettlementMethod} from './session-settlement';
+
+export type SessionPayment={id:string;sessionId:string;method:SessionSettlementMethod;amount:number;status:'CAPTURED'|'VOIDED';createdBy?:string;createdAt:string;voidedAt?:string;voidedBy?:string;voidReason?:string};
+
+type PaymentRow=RowDataPacket&{id:string;session_id:string;method:SessionSettlementMethod;amount:number|string;status:'CAPTURED'|'VOIDED';created_by:string|null;created_at:string;voided_at:string|null;voided_by:string|null;void_reason:string|null};
+const money=(v:unknown)=>Number(v||0);
+const map=(r:PaymentRow):SessionPayment=>({id:r.id,sessionId:r.session_id,method:r.method,amount:money(r.amount),status:r.status,createdBy:r.created_by||undefined,createdAt:new Date(r.created_at).toISOString(),voidedAt:r.voided_at?new Date(r.voided_at).toISOString():undefined,voidedBy:r.voided_by||undefined,voidReason:r.void_reason||undefined});
+
+export async function listSessionPayments(sessionId:string){
+ const id=sessionId.trim();
+ if(!id||id.length>64)throw Error('INVALID_SESSION_ID');
+ const [rows]=await pool.query<PaymentRow[]>('SELECT id,session_id,method,amount,status,created_by,created_at,voided_at,voided_by,void_reason FROM session_settlements WHERE session_id=? ORDER BY created_at DESC,id DESC',[id]);
+ return rows.map(map);
+}
+
+export async function getSessionPayment(paymentId:string){
+ const id=paymentId.trim();
+ if(!id||id.length>64)throw Error('INVALID_PAYMENT_ID');
+ const [rows]=await pool.query<PaymentRow[]>('SELECT id,session_id,method,amount,status,created_by,created_at,voided_at,voided_by,void_reason FROM session_settlements WHERE id=? LIMIT 1',[id]);
+ return rows[0]?map(rows[0]):null;
+}
+
+export async function captureSessionPayment(input:{sessionId:string;amount:number;method:SessionSettlementMethod;staffId:string;idempotencyKey?:string}){
+ const result=await settleSession(input);
+ const payment=await getSessionPayment(result.settlementId);
+ if(!payment)throw Error('PAYMENT_NOT_FOUND_AFTER_CAPTURE');
+ return {payment,settlement:await getSessionSettlement(input.sessionId)};
+}
+
+export async function reconcileSessionPayment(sessionId:string){
+ return transaction(async(c:PoolConnection)=>{
+  const id=sessionId.trim();
+  if(!id||id.length>64)throw Error('INVALID_SESSION_ID');
+  const [rows]=await c.query<RowDataPacket[]>('SELECT id,status,settlement_status FROM sessions WHERE id=? FOR UPDATE',[id]);
+  if(!rows[0])throw Error('SESSION_NOT_FOUND');
+  const [payments]=await c.query<PaymentRow[]>('SELECT id,session_id,method,amount,status,created_by,created_at,voided_at,voided_by,void_reason FROM session_settlements WHERE session_id=? ORDER BY created_at,id',[id]);
+  const captured=payments.filter(p=>p.status==='CAPTURED').reduce((n,p)=>n+money(p.amount),0);
+  return {sessionId:id,status:String(rows[0].status),settlementStatus:String(rows[0].settlement_status||'NOT_DUE'),captured, payments:payments.map(map)};
+ });
+}
+
+export const newPaymentIdempotencyKey=()=>`session-pay-${randomUUID()}`;
