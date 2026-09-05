@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { pool, transaction } from './mysql';
 import type { StationCommand } from './station-agent-protocol';
 
@@ -72,10 +72,10 @@ export async function claimNextStationCommand(stationId: string) {
 }
 
 export async function acknowledgeStationCommand(input: { stationId: string; commandId: string; accepted: boolean; message?: string }) {
-  const result = await pool.execute(
+  const [result] = await pool.execute<ResultSetHeader>(
     "UPDATE station_agent_commands SET status=?, acknowledged_at=NOW(3), result_message=? WHERE id=? AND station_id=? AND status='CLAIMED'",
     [input.accepted ? 'ACKNOWLEDGED' : 'REJECTED', input.message?.slice(0, 255) || null, input.commandId, input.stationId],
   );
-  const affected = Number((result as [{ affectedRows: number }])[0].affectedRows);
+  const affected = Number(result.affectedRows);
   if (affected !== 1) throw new Error('Command is not claimable or does not belong to station');
 }
