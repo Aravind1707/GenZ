@@ -1,0 +1,6 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {COOKIE,requireStaff,audit} from '../../../../lib/staff-auth';
+import {voidSettlement,getSessionSettlement} from '../../../../lib/session-settlement';
+const str=(v:unknown)=>typeof v==='string'?v.trim():'';
+export async function POST(req:Request){try{const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'payments:write');const b=await req.json();const settlementId=str(b?.settlementId),reason=str(b?.reason);if(!settlementId||settlementId.length>64||!reason)return NextResponse.json({ok:false,error:'settlementId and reason are required'},{status:400});const result=await voidSettlement({settlementId,staffId:staff.id,reason});await audit(staff.id,'SESSION_PAYMENT_VOIDED','session',result.sessionId,{settlementId,reason});return NextResponse.json({ok:true,result,settlement:await getSessionSettlement(result.sessionId)});}catch(e){const m=e instanceof Error?e.message:'';if(m==='STAFF_UNAUTHORIZED'||m==='STAFF_FORBIDDEN')return NextResponse.json({ok:false,error:m==='STAFF_FORBIDDEN'?'Permission denied':'Staff authorization required'},{status:m==='STAFF_FORBIDDEN'?403:401});return NextResponse.json({ok:false,error:m||'Unable to void settlement'},{status:m==='SETTLEMENT_NOT_FOUND'?404:400});}}
