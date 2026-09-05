@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS member_price_rules (
   id VARCHAR(64) NOT NULL PRIMARY KEY,member_tier ENUM('REGULAR','GOLD','VIP') NOT NULL,category VARCHAR(100) NOT NULL,
   discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,active BOOLEAN NOT NULL DEFAULT TRUE,UNIQUE KEY uq_member_price_rule(member_tier,category)
 ) ENGINE=InnoDB;
-ALTER TABLE menu_items ADD COLUMN image_url VARCHAR(500) NULL;
 INSERT INTO member_price_rules(id,member_tier,category,discount_percent,active)
 VALUES('RULE-REGULAR-ALL','REGULAR','ALL',0,TRUE),('RULE-GOLD-ALL','GOLD','ALL',10,TRUE),('RULE-VIP-ALL','VIP','ALL',15,TRUE)
 ON DUPLICATE KEY UPDATE discount_percent=VALUES(discount_percent),active=VALUES(active);
