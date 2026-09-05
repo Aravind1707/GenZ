@@ -1,6 +1,5 @@
 import type {RowDataPacket} from 'mysql2/promise';
-import {pool,transaction} from './mysql';
-import {netTenderTotal} from './daily-close';
+import {transaction} from './mysql';
 
 const METHODS=['CASH','UPI','CARD','RAZORPAY','OTHER'] as const;
 type Method=typeof METHODS[number];
@@ -33,10 +32,10 @@ export async function getDailyCloseReport(date:string):Promise<DailyCloseReport>
         else operatingExpenses[method]+=amount;
       }
     }
-    const tenderGross=METHODS.reduce((n,m)=>n+tenders[m],0),refundTotal=METHODS.reduce((n,m)=>n+refunds[m],0),tenderNet=netTenderTotal({cash:BigInt(tenders.CASH),upi:BigInt(tenders.UPI),card:BigInt(tenders.CARD),other:BigInt(tenders.RAZORPAY+tenders.OTHER),refunds:BigInt(refundTotal)});
+    const tenderGross=METHODS.reduce((n,m)=>n+tenders[m],0),refundTotal=METHODS.reduce((n,m)=>n+refunds[m],0),tenderNet=tenderGross-refundTotal;
     const operatingExpenseTotal=METHODS.reduce((n,m)=>n+operatingExpenses[m],0);
     const cashDrawerNet=tenders.CASH-refunds.CASH-operatingExpenses.CASH;
-    const reconciliationDifference=Number(tenderNet)-earnedRevenue;
-    return{date,status:reconciliationDifference===0?'BALANCED':'TIMING_DIFFERENCE',tenders,tenderGross,refunds,refundTotal,tenderNet:Number(tenderNet),operatingExpenses,operatingExpenseTotal,cashDrawerNet,earnedRevenue,creditSales,creditRepayments,bookingDeposits,reconciliationDifference,categoryBreakdown:Array.from(categoryMap.values()).sort((a,b)=>b.amount-a.amount).slice(0,50)};
+    const reconciliationDifference=tenderNet-earnedRevenue;
+    return{date,status:reconciliationDifference===0?'BALANCED':'TIMING_DIFFERENCE',tenders,tenderGross,refunds,refundTotal,tenderNet,operatingExpenses,operatingExpenseTotal,cashDrawerNet,earnedRevenue,creditSales,creditRepayments,bookingDeposits,reconciliationDifference,categoryBreakdown:Array.from(categoryMap.values()).sort((a,b)=>b.amount-a.amount).slice(0,50)};
   });
 }
