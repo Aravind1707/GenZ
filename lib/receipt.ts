@@ -1,9 +1,10 @@
+import type {RowDataPacket} from 'mysql2/promise';
 import {pool} from './mysql';
 import {calculateSessionBilling} from './gaming-billing';
 import {getSessionSettlement} from './session-settlement';
 import {listSessionPayments} from './session-payment';
 
-type ReceiptOrderRow={id:string;status:string;payment_mode:string;payment_status:string;created_at:Date|string;total:number|string;item_name:string|null;qty:number|string|null;unit_price:number|string|null;participant_name:string|null};
+type ReceiptOrderRow=RowDataPacket & {id:string;status:string;payment_mode:string;payment_status:string;created_at:Date|string;total:number|string;item_name:string|null;qty:number|string|null;unit_price:number|string|null;participant_name:string|null};
 const money=(v:unknown)=>Number(v||0);
 
 export type SessionReceipt={
@@ -17,7 +18,7 @@ export type SessionReceipt={
 export async function getSessionReceipt(sessionId:string):Promise<SessionReceipt>{
   const id=sessionId.trim();
   if(!id||id.length>64)throw Error('INVALID_SESSION_ID');
-  const [sessionRows]=await pool.query<any[]>('SELECT id,station_id,customer_name,status FROM sessions WHERE id=? LIMIT 1',[id]);
+  const [sessionRows]=await pool.query<(RowDataPacket & {id:string;station_id:string;customer_name:string;status:string})[]>('SELECT id,station_id,customer_name,status FROM sessions WHERE id=? LIMIT 1',[id]);
   if(!sessionRows[0])throw Error('SESSION_NOT_FOUND');
   const session=sessionRows[0];
   const [billing,settlement]=await Promise.all([calculateSessionBilling(id),getSessionSettlement(id)]);
