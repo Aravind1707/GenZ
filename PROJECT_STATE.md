@@ -3,7 +3,7 @@
 > Shared hand-off for parallel AI development. `main` is the source of truth. Fetch latest `main` before changing files, preserve other agents' work, keep commits small, and update this file plus `README.md` after meaningful work.
 
 **State reviewed:** 2026-09-05 IST  
-**Repository:** `Aravind1707/GenZ`  
+**Repository:** `GenZ`  
 **Branch:** `main`
 
 ## Product rules
@@ -23,26 +23,27 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 
 - Next.js 15.5.24, React 19.2.0, TypeScript, MySQL, mysql2.
 - Lazy MySQL pool keeps builds independent of a live database.
-- GitHub Actions runs migration-integrity tests and `npm run build`.
+- GitHub Actions runs migration-integrity tests, unit/build, MySQL integration/concurrency, Docker/Compose and security jobs.
 - Static IP is a public endpoint behind HTTPS/firewall, not authentication.
 - Private infrastructure uses VPN; MySQL/RDP/SSH/router/CCTV/station-agent ports are not public.
 - POS/ECR remains provider-neutral and disabled until the exact terminal/provider API is verified.
 
 ## Completed foundations
 
-Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, daily-close cash/tender reporting, external reconciliation, OWNER administration and persisted realtime replay foundation.
+Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, external provider reconciliation, OWNER administration, persisted realtime replay, and daily-close/accounting controls.
 
-## Current build additions
+## Daily close / accounting — implemented
 
-- Inventory materials/BOM, fractional stock, costed receiving batches, stocktakes and waste workflows are implemented.
-- Recipe-backed delivered-order consumption now uses FIFO inventory batches and writes an immutable `inventory_cogs_ledger` record per batch allocation.
-- `db/migrations/044_inventory_cogs.sql` adds the COGS ledger and `/api/inventory/cogs` plus `/inventory/cogs` expose the operational ledger.
-- `/inventory` now links directly to Materials/BOM and FIFO COGS views.
-- Staff migration numbering conflict was corrected: the later OWNER/MANAGER role migration is now version 043 while legacy login throttling remains version 027.
-- Middleware now attaches an edge-safe `x-request-id` correlation identifier to application/API responses.
-- Temporary repository artifact `tmp-x` was removed.
-- Daily-close approval remains OWNER-only and is intended to reject unbalanced reconciliation; the approval implementation still requires final verification in CI/runtime before this is marked production-complete.
-- Provider-aware refund references/status, external finance reconciliation, persisted realtime replay, production CSP/HSTS and migration-integrity testing remain active foundations.
+- Staff cash-count workflow with MANAGER `daily_close:count` permission; OWNER retains full finance authority.
+- Daily close calculates tender gross/net, refunds/reversals, operating expenses, cash drawer net and physical cash variance.
+- Credit sales are treated as earned revenue without same-day tender; credit repayments are tender inflows, not new earned revenue.
+- Booking deposit advances are tender inflows but excluded from earned revenue; reconciliation explicitly accounts for them.
+- OWNER approval requires a cash count, zero cash variance, zero reconciliation difference and zero unresolved finance/provider reconciliation exceptions.
+- Approval persists in `daily_cash_counts`; approved periods are locked against the application finance expense path.
+- OWNER-only reopen clears approval, increments reopen count and records the reason in an immutable close-event trail.
+- Cash-count/approval/reopen events are persisted in `daily_close_events` and surfaced in the UI.
+- Daily CSV export plus reusable daily/weekly/monthly finance reporting API/export is implemented.
+- Provider/finance exceptions are surfaced as explicit blockers rather than silently closing.
 
 ## Remaining project modules — build order
 
@@ -65,7 +66,7 @@ Polish customer/member lookup, calendar/timeline, modifiers, deposits, cancellat
 Add event retention/pruning and shared broker delivery if deployment uses more than one Next.js process.
 
 ### 7. Testing/security/deployment
-Add MySQL integration/concurrency/security tests, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
+Add MySQL integration/concurrency/security tests for the new accounting controls, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
 
 ## Definition of 100%
 
@@ -93,12 +94,13 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added station-agent protocol, lease, heartbeat, durable command queue and Windows lock/shutdown hooks.
 - Added combined session receipts and immutable partial session-payment refunds with finance reversal/audit records.
 - Added daily close tender/refund/expense reporting and persisted physical cash variance.
-- Added inventory recipe/material, fractional reservation, receiving-batch, cost, stocktake and waste foundations.
-- Added FIFO batch consumption and immutable COGS ledger/view.
+- Corrected daily-close reconciliation to explicitly account for credit sales, credit repayments and booking-deposit advances.
+- Added `daily_close_events` audit trail, OWNER reopen workflow, unresolved-exception close blocking and daily/weekly/monthly finance report/export APIs.
+- Added manager cash-count permission while keeping approval/reopen OWNER-only.
+- Added accounting-period lock guard for manual finance expenses and migration 046 for close controls.
 - Added external finance reconciliation records/API/UI.
 - Added OWNER administration and staff lifecycle API/UI.
 - Added persisted realtime event replay and reconnect-aware SSE.
 - Hardened production CSP/HSTS and added migration integrity tests to CI.
 - Expanded reconciliation to expense/refund records and added provider-aware refund references.
-- Added persistent OWNER daily-close approval workflow.
 - Corrected duplicate migration numbering and added request correlation IDs.
