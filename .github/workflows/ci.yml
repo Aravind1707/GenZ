@@ -31,7 +31,6 @@ jobs:
           path: coverage/unit-coverage.txt
           retention-days: 14
       - run: npm run build
-
   mysql-integration:
     name: MySQL integration + concurrency
     runs-on: ubuntu-latest
@@ -67,7 +66,6 @@ jobs:
       - run: npm run db:migrate
       - run: npm run db:migrate
       - run: npm run test:integration
-
   docker:
     name: Docker build + Compose validation
     runs-on: ubuntu-latest
@@ -82,7 +80,6 @@ jobs:
         run: docker compose config --quiet
       - name: Build production image
         run: docker build --tag genz-os:ci .
-
   security:
     name: Dependency + security checks
     runs-on: ubuntu-latest
@@ -98,5 +95,12 @@ jobs:
           mkdir -p security
           npm audit --json > security/npm-audit.json || true
           npm audit --audit-level=critical
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-security-audit
+          path: security/npm-audit.json
+          retention-days: 14
       - name: Source security contract checks
         run: npm run test:qa
