@@ -22,9 +22,13 @@ function splitSql(sql){
 }
 
 const ignorableDdlErrors=new Set([1050,1060,1061,1826,1831]);
+function mysqlCompatible(statement){
+  return statement.replace(/\bADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/gi,'ADD COLUMN');
+}
 async function applyMigration(file,version){
   const sql=await fs.readFile(path.join(process.cwd(),'db/migrations',file),'utf8');
-  for(const statement of splitSql(sql)){
+  for(const rawStatement of splitSql(sql)){
+    const statement=mysqlCompatible(rawStatement);
     try{await connection.query(statement)}catch(error){
       if(ignorableDdlErrors.has(Number(error?.errno))){console.warn(`Skipping already-present DDL in ${file}: ${error.sqlMessage}`);continue}
       throw error;
