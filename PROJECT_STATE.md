@@ -8,7 +8,7 @@
 
 ## Product rules
 
-GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 MOZA stations, plus food, memberships, bookings, gaming sessions, participant billing, groups, payments, staff, finance and future hardware control.
+GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 MOZA stations, plus food, memberships, bookings, gaming sessions, participant billing, groups, payments, staff, finance and equipment control.
 
 - Customer identity = mobile + OTP.
 - Never trust client membership, prices, totals, payment state, station ownership or staff role.
@@ -18,55 +18,55 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - Equipment remains unavailable until settlement is paid or legitimately moved to approved credit.
 - Every rupee needs an auditable ledger origin.
 - Inventory reservation is atomic; stock is consumed only when a paid order is delivered.
+- Food cancellation/refund policy: before preparation, cancellation is allowed and paid orders are eligible up to 100%; once preparation has started, cancellation is blocked and any approved paid-order refund is limited to 50%; food refunds are paid at the Admin Desk in cash.
 
-## Architecture/CI
+## Deploy-ready software baseline
 
-- Next.js 15.5.24, React 19.2.0, TypeScript, MySQL, mysql2.
-- Lazy MySQL pool keeps builds independent of a live database.
-- GitHub Actions runs migration-integrity tests, unit/build, MySQL integration/concurrency, Docker/Compose and security jobs.
-- Static IP is a public endpoint behind HTTPS/firewall, not authentication.
-- Private infrastructure uses VPN; MySQL/RDP/SSH/router/CCTV/station-agent ports are not public.
-- POS/ECR remains provider-neutral and disabled until the exact terminal/provider API is verified.
+The application code, database migrations, operational APIs/UI, CI, Docker deployment, station agent foundation, backup/restore tooling and production health endpoint are implemented. Migration `048_food_refund_policy.sql` contains the auditable food refund policy ledger.
 
-## Completed foundations
+Completed software areas include customer OTP/security, membership/pricing, food ordering, booking/check-in/no-show, gaming sessions/billing, station challenge attribution, station lease/lock controls, settlement/partial payments/idempotency, monthly credit, OWNER/MANAGER RBAC, inventory reservation/FIFO/expiry/COGS/stocktakes/suppliers/waste/valuation, finance ledger/daily close/reconciliation/provider reconciliation, receipts/refunds, OWNER administration, persisted realtime replay/SSE, CSP/HSTS/request IDs, Windows station kiosk launch, MySQL backup/restore scripts and `/api/health` readiness.
 
-Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, external provider reconciliation, OWNER administration, persisted realtime replay, daily-close/accounting controls, and inventory controls/reporting.
+## Food refund implementation
 
-## Inventory — implemented
+- Customer cancellation endpoint verifies ownership and only permits `NEW` or `ACCEPTED`.
+- Paid pre-preparation cancellation creates an auditable refund eligibility of up to 100%.
+- Once `PREPARING` begins, cancellation is rejected server-side.
+- Staff Admin Desk refund processing enforces 100% maximum before preparation and 50% maximum after preparation.
+- Refund method is explicitly `ADMIN_DESK_CASH`; no automatic online refund is performed by the cancellation flow.
+- Refunds create finance expense and audit records and are idempotently limited to one paid food-refund record per order.
 
-- Recipe-backed FIFO batch consumption now excludes expired batches and creates immutable batch-level COGS entries.
-- Delivered-order inventory consumption is transactional and rejects insufficient batch/recipe stock; legacy stock paths also reject negative stock.
-- Receiving creates costed batches, records supplier-linked purchase history, updates stock and movement history, and rejects expired/same-day expiry dates.
-- Stocktakes are staged for editing, then require explicit authorization/finalization before variance is applied; all material counts/variances are audited.
-- Supplier records and supplier purchase history are persisted.
-- Wastage requires available unreserved stock, uses a valid non-expired batch, records a reason and immutable movement/audit information.
-- Inventory valuation excludes expired stock; COGS reporting is exposed by business date.
-- Inventory movement/history API exposes receive/reserve/release/consume/adjust/waste/stocktake activity and authorization metadata.
-- Materials UI now exposes suppliers, receiving, stocktake workflow, inventory history, purchase history, valuation and daily COGS reporting.
-- Customer food availability remains server-authoritative from recipe stock; unavailable dishes are displayed but ordering is disabled.
+## Inventory
 
-## Remaining project modules — build order
+Recipe-backed FIFO batch consumption excludes expired batches and creates immutable COGS. Receiving creates costed batches and supplier history. Stocktakes require staged editing followed by explicit authorization/finalization. Wastage requires available unreserved stock and a valid non-expired batch. Valuation excludes expired stock. Customer availability is server-authoritative and unavailable food cannot be ordered.
 
-### 1. Payment/reconciliation completion
-Provider-specific automated import/matching only where official APIs/credentials are available, webhook reconciliation hardening, external reference mapping and operational exception resolution.
+## Admin
 
-### 2. Inventory verification
-Run real MySQL integration scenarios with multiple batches, fractional recipes, delivery consumption, expiry boundaries, stocktake concurrency and supplier receipts; add richer batch-level expiry UI and automated low-stock notification delivery if required operationally.
+OWNER administration now provides create/edit/status controls for menu catalogue, gaming rates, stations, member pricing rules and staff lifecycle. The backend remains owner-only and audited.
 
-### 3. Admin completion
-Finish full CRUD forms for every gaming/menu/station/member rule field, effective-date pricing, station overrides, customer/member lifecycle search, and richer staff management UX.
+## Station / hardware
 
-### 4. Station/hardware enforcement
-Complete verified Windows kiosk/session launch, safe unlock/start, WOL/graceful shutdown and adapters for consoles/VR/MOZA. Exact vendor APIs must be verified before implementation.
+The station agent is provider-neutral and fail-closed: it has heartbeat, durable commands, session leases, Windows workstation lock and graceful shutdown hooks. `scripts/station-kiosk.ps1` launches the station QR in Edge kiosk mode. Exact WOL, console, VR and MOZA vendor integrations remain deliberately gated until the installed hardware/API is known.
 
-### 5. Bookings/KDS
-Polish customer/member lookup, calendar/timeline, modifiers, deposits, cancellation/refund policy, payment retry and out-of-stock UX.
+## Reliability / deployment
 
-### 6. Realtime completion
-Add event retention/pruning and shared broker delivery if deployment uses more than one Next.js process.
+- Docker Compose keeps MySQL private and applies migrations automatically.
+- `/api/health` reports database readiness and latest migration.
+- `scripts/backup-mysql.ps1` produces transactional MySQL dumps with retention.
+- `scripts/restore-mysql.ps1` restores a dump into a verification database.
+- CI covers unit/build, migration/integration/concurrency, Docker and security contracts.
+- Production physical acceptance still requires off-host backup/restore test, real OTP/payment credentials, HTTPS/static-IP/router verification, station reboot/lease-lock testing and café LAN outage testing.
 
-### 7. Testing/security/deployment
-Add MySQL integration/concurrency/security tests for the new inventory controls, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
+## Final physical/environment acceptance only
+
+1. Real MSG91 OTP delivery.
+2. Real Razorpay test/live payment, webhook and provider reconciliation.
+3. Static public IP/DNS/HTTPS/reverse proxy/firewall/VPN.
+4. Off-host backup and clean restore drill.
+5. Station-by-station Windows lease expiry/lock/reboot test.
+6. Installed console/VR/MOZA hardware behavior and any exact vendor adapter.
+7. Full café LAN acceptance of the booking → session → food → payment → receipt → finance → daily-close flow.
+
+These are deployment-environment gates, not unfinished application modules.
 
 ## Definition of 100%
 
@@ -84,7 +84,7 @@ BOOKING
  -> AUDIT
 ```
 
-Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, realtime LAN operation, equipment state, backups/restores and automated tests.
+Plus reliable bootstrap/upgrades, authorization, payments, inventory, realtime operation, equipment state, backups/restores and automated tests.
 
 ## Development log — 2026-09-05
 
@@ -93,16 +93,13 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added provider-neutral POS/ECR boundary and Windows/static-IP deployment foundation.
 - Added station-agent protocol, lease, heartbeat, durable command queue and Windows lock/shutdown hooks.
 - Added combined session receipts and immutable partial session-payment refunds with finance reversal/audit records.
-- Added daily close tender/refund/expense reporting and persisted physical cash variance.
-- Corrected daily-close reconciliation to explicitly account for credit sales, credit repayments and booking-deposit advances.
-- Added `daily_close_events` audit trail, OWNER reopen workflow, unresolved-exception close blocking and daily/weekly/monthly finance report/export APIs.
-- Added manager cash-count permission while keeping approval/reopen OWNER-only and accounting-period lock guard for manual finance expenses.
-- Added external finance reconciliation records/API/UI.
+- Added daily-close tender/refund/expense reporting and persisted physical cash variance.
+- Added daily-close events, OWNER reopen workflow, exception blocking and finance report/export APIs.
+- Added manager cash-count permission while keeping approval/reopen OWNER-only.
+- Added external finance reconciliation records/API/UI and provider reconciliation.
 - Added inventory material/BOM, fractional stock, receiving batches, expiry controls, stocktakes, wastage, suppliers, purchase history, FIFO consumption, COGS, valuation and audit/history APIs/UI.
-- Hardened expired-batch exclusion and negative-stock prevention.
-- Added inventory migration 047 and expanded inventory QA contracts.
 - Added OWNER administration and staff lifecycle API/UI.
 - Added persisted realtime event replay and reconnect-aware SSE.
-- Hardened production CSP/HSTS and added migration integrity tests to CI.
-- Expanded reconciliation to expense/refund records and added provider-aware refund references.
-- Corrected duplicate migration numbering and added request correlation IDs.
+- Hardened production CSP/HSTS and request correlation IDs.
+- Added food cancellation/refund policy migration 048, customer cancellation flow and Admin Desk refund workflow.
+- Added production readiness health endpoint, Windows station kiosk launcher and MySQL backup/restore verification scripts.
