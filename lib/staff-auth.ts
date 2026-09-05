@@ -13,7 +13,7 @@ export type StaffRole='OWNER'|'MANAGER'|'CASHIER'|'KITCHEN'|'FLOOR';
 export type Staff={id:string;username:string;name:string;role:StaffRole};
 const hashToken=(v:string)=>createHash('sha256').update(v).digest('hex');
 const id=()=>`STF-${randomBytes(12).toString('hex')}`;
-const loginAllowed=(key:string)=>{const now=Date.now(),values=(loginRates.get(key)||[]).filter((t:number)=>t>now-15*60*1000);if(values.length>=10){loginRates.set(key,values);return false;}values.push(now);loginRates.set(key,values);if(loginRates.size>5000){for(const[k,v]of loginRates){if(!v.some(t=>t>now-60*60*1000))loginRates.delete(k);}}return true;};
+const loginAllowed=(key:string)=>{const now=Date.now(),values=(loginRates.get(key)||[]).filter((t:number)=>t>now-15*60*1000);if(values.length>=10){loginRates.set(key,values);return false;}values.push(now);loginRates.set(key,values);if(loginRates.size>5000){for(const[k,v]of loginRates){if(!v.some((t:number)=>t>now-60*60*1000))loginRates.delete(k);}}return true;};
 const loginSuccess=(key:string)=>loginRates.delete(key);
 async function passwordHash(password:string){const salt=randomBytes(16).toString('hex');const derived=await scrypt(password,salt,64) as Buffer;return `scrypt$${salt}$${derived.toString('hex')}`;}
 async function passwordMatches(password:string,stored:string){const [kind,salt,hex]=stored.split('$');if(kind!=='scrypt'||!salt||!hex)return false;const derived=await scrypt(password,salt,64) as Buffer;const expected=Buffer.from(hex,'hex');return expected.length===derived.length&&timingSafeEqual(expected,derived);}
