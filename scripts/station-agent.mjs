@@ -6,6 +6,10 @@ const serverUrl=(process.env.GENZ_SERVER_URL||'http://localhost:3000').replace(/
 const stationId=(process.env.GENZ_STATION_ID||'').trim();
 const secret=process.env.GENZ_STATION_AGENT_SECRET||'';
 const port=Number(process.env.GENZ_STATION_AGENT_PORT||17800);
+const agentId=(process.env.GENZ_STATION_AGENT_ID||`${stationId}-${process.pid}`).slice(0,128);
+const version=(process.env.GENZ_STATION_AGENT_VERSION||'0.1.0').slice(0,64);
+let agentState='IDLE';
+let currentSessionId=null;
 
 if(!stationId||!secret||secret.length<32)throw new Error('Set GENZ_STATION_ID and a 32+ character GENZ_STATION_AGENT_SECRET.');
 
@@ -14,6 +18,12 @@ async function getChallenge(){
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data.ok)throw new Error(data.error||`Challenge request failed (${response.status})`);
   return data.challenge;
+}
+
+async function heartbeat(){
+  try{
+    await fetch(`${serverUrl}/api/station-agent/heartbeat`,{method:'POST',headers:{'content-type':'application/json','x-genz-station-secret':secret},body:JSON.stringify({stationId,agentId,state:agentState,sessionId:currentSessionId,observedAt:new Date().toISOString(),version})});
+  }catch(error){console.error('Heartbeat failed:',error instanceof Error?error.message:error);}
 }
 
 async function render(res){
@@ -27,6 +37,6 @@ async function render(res){
 }
 
 const server=http.createServer((req,res)=>{if(req.url!=='/'&&req.url!=='/health'){res.writeHead(404);return res.end('Not found');}if(req.url==='/health'){res.writeHead(200,{'content-type':'text/plain'});return res.end('ok');}return render(res);});
-server.listen(port,'127.0.0.1',()=>{const url=`http://127.0.0.1:${port}/`;console.log(`GenZ station agent: ${stationId}`);console.log(`QR display: ${url}`);if(process.platform==='win32')exec(`start "" "${url}"`);else if(process.platform==='darwin')exec(`open "${url}"`);else exec(`xdg-open "${url}"`);});
+server.listen(port,'127.0.0.1',()=>{console.log(`GenZ station agent: ${stationId} (${agentId})`);console.log(`QR display: http://127.0.0.1:${port}/`);heartbeat();setInterval(heartbeat,15000);if(process.platform==='win32')exec(`start "" "http://127.0.0.1:${port}/"`);else if(process.platform==='darwin')exec(`open "http://127.0.0.1:${port}/"`);else exec(`xdg-open "http://127.0.0.1:${port}/"`);});
 process.on('SIGINT',()=>server.close(()=>process.exit(0)));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
