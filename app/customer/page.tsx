@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import FoodCart from './FoodCart';
 type GamingItem={id:string;label:string;stationType:string;pcTier?:string;specs?:string;imageUrl?:string;regularPrice:number;memberPrice:number;unitLabel:string};
-type FoodItem={id:string;name:string;category:string;imageUrl?:string;regularPrice:number;memberPrice:number};
+type FoodItem={id:string;name:string;category:string;imageUrl?:string;regularPrice:number;memberPrice:number;available:boolean};
 type Pricing={isMember:boolean;tier?:string;gaming:GamingItem[];food:FoodItem[]};
 type Customer={mobile:string;name?:string|null;memberTier?:string|null;memberExpires?:string|null};
 type Session={id:string;stationId:string;station:string;type:string;startedAt:string;scheduledEndAt:string|null;nextBookingAt:string|null};
