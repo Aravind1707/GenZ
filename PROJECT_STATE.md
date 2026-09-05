@@ -34,28 +34,23 @@ Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-s
 
 ## Current build additions
 
-- `db/migrations/036_inventory_recipes_batches_stocktakes.sql` and `037_inventory_reservation_decimal_qty.sql` add inventory materials, BOM/recipes, fractional stock, costed receiving, stocktakes, wastage reasons and material movement history.
-- `lib/inventory-materials.ts` implements material lifecycle, recipe management, receiving, valuation, stocktakes and reason-coded waste.
-- `lib/inventory.ts` uses configured recipes for reservation/consumption/release while retaining legacy direct-menu compatibility.
-- `db/migrations/038_finance_reconciliation.sql` adds auditable external transaction matching; reconciliation now covers both incoming revenue and outgoing refund/expense ledger records.
-- Provider-aware refund fields now capture provider, external reference and provider status without editing the original payment/refund ledger record.
-- `db/migrations/040_finance_reconciliation_scope.sql` records the expanded reconciliation scope.
-- `db/migrations/041_session_refund_provider.sql` adds provider-aware refund references/status.
-- `db/migrations/042_daily_close_approval.sql` adds persistent daily-close approval state and approving staff attribution.
-- `/reconciliation` now exposes incoming/outgoing records and separate unreconciled revenue/expense totals.
-- `/api/daily-close` and `/daily-close` support persistent cash count plus OWNER-only approval; approved closes cannot be overwritten.
-- `/admin` plus `/api/admin/catalog` and `/api/admin/staff` provide OWNER-only catalogue, gaming-rate, station, member-rule and staff lifecycle controls.
-- `db/migrations/039_realtime_event_log.sql`, `lib/realtime.ts` and `/api/events` provide persisted replay/reconnect-aware SSE.
-- Production CSP removes `unsafe-eval` and production HSTS is enabled.
-- `scripts/validate-migrations.mjs` and `npm test` validate numbered migration/version integrity before build.
+- Inventory materials/BOM, fractional stock, costed receiving batches, stocktakes and waste workflows are implemented.
+- Recipe-backed delivered-order consumption now uses FIFO inventory batches and writes an immutable `inventory_cogs_ledger` record per batch allocation.
+- `db/migrations/044_inventory_cogs.sql` adds the COGS ledger and `/api/inventory/cogs` plus `/inventory/cogs` expose the operational ledger.
+- `/inventory` now links directly to Materials/BOM and FIFO COGS views.
+- Staff migration numbering conflict was corrected: the later OWNER/MANAGER role migration is now version 043 while legacy login throttling remains version 027.
+- Middleware now attaches an edge-safe `x-request-id` correlation identifier to application/API responses.
+- Temporary repository artifact `tmp-x` was removed.
+- Daily-close approval remains OWNER-only and is intended to reject unbalanced reconciliation; the approval implementation still requires final verification in CI/runtime before this is marked production-complete.
+- Provider-aware refund references/status, external finance reconciliation, persisted realtime replay, production CSP/HSTS and migration-integrity testing remain active foundations.
 
 ## Remaining project modules — build order
 
 ### 1. Payment/reconciliation completion
-Core reconciliation and close approval foundations are implemented. Remaining: provider-specific automated import/matching only where official APIs/credentials are available, provider webhook reconciliation, and operational exception resolution workflow.
+Provider-specific automated import/matching only where official APIs/credentials are available, webhook reconciliation hardening, external reference mapping and operational exception resolution.
 
 ### 2. Inventory completion
-Complete order-level FIFO batch consumption/COGS accounting, customer-facing out-of-stock behavior, full stocktake editing UI and richer supplier/expiry workflows.
+Complete stocktake editing UX, supplier/expiry workflows, customer-facing out-of-stock behavior, and COGS/reporting verification against real delivered orders.
 
 ### 3. Admin completion
 Finish full CRUD forms for every gaming/menu/station/member rule field, effective-date pricing, station overrides, customer/member lifecycle search, and richer staff management UX.
@@ -70,7 +65,7 @@ Polish customer/member lookup, calendar/timeline, modifiers, deposits, cancellat
 Add event retention/pruning and shared broker delivery if deployment uses more than one Next.js process.
 
 ### 7. Testing/security/deployment
-Add MySQL integration/concurrency/security tests, request-ID/error hardening, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
+Add MySQL integration/concurrency/security tests, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
 
 ## Definition of 100%
 
@@ -99,9 +94,11 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added combined session receipts and immutable partial session-payment refunds with finance reversal/audit records.
 - Added daily close tender/refund/expense reporting and persisted physical cash variance.
 - Added inventory recipe/material, fractional reservation, receiving-batch, cost, stocktake and waste foundations.
+- Added FIFO batch consumption and immutable COGS ledger/view.
 - Added external finance reconciliation records/API/UI.
 - Added OWNER administration and staff lifecycle API/UI.
 - Added persisted realtime event replay and reconnect-aware SSE.
 - Hardened production CSP/HSTS and added migration integrity tests to CI.
 - Expanded reconciliation to expense/refund records and added provider-aware refund references.
 - Added persistent OWNER daily-close approval workflow.
+- Corrected duplicate migration numbering and added request correlation IDs.
