@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {pool} from '../../../../lib/mysql';
+import {pool} from '../../../lib/mysql';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 export async function GET(){
