@@ -15,14 +15,14 @@ CREATE TABLE IF NOT EXISTS session_participants (
   INDEX idx_participants_customer(customer_id)
 ) ENGINE=InnoDB;
 
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS participant_id VARCHAR(64) NULL;
+ALTER TABLE order_items ADD COLUMN participant_id VARCHAR(64) NULL;
 ALTER TABLE order_items ADD CONSTRAINT fk_order_items_participant FOREIGN KEY(participant_id) REFERENCES session_participants(id) ON DELETE SET NULL;
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID';
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at DATETIME(3) NULL;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(80) NULL;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(80) NULL;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature VARCHAR(128) NULL;
+ALTER TABLE orders ADD COLUMN payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID';
+ALTER TABLE orders ADD COLUMN paid_at DATETIME(3) NULL;
+ALTER TABLE orders ADD COLUMN razorpay_order_id VARCHAR(80) NULL;
+ALTER TABLE orders ADD COLUMN razorpay_payment_id VARCHAR(80) NULL;
+ALTER TABLE orders ADD COLUMN razorpay_signature VARCHAR(128) NULL;
 ALTER TABLE orders ADD UNIQUE KEY uq_orders_razorpay_order(razorpay_order_id);
 ALTER TABLE orders ADD UNIQUE KEY uq_orders_razorpay_payment(razorpay_payment_id);
 
