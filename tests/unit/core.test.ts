@@ -1,0 +1,58 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { calculateRefund } from '../../lib/refund-policy';
+import { netTenderTotal, assertDailyCloseBalanced } from '../../lib/daily-close';
+import { isStationAgentState, isExpiredIso } from '../../lib/station-agent-protocol';
+import { remainingLeaseMs } from '../../lib/station-agent-lease';
+import { normalizeMobile } from '../../lib/customer-auth';
+import { verifyRazorpaySignature, verifyRazorpayWebhook } from '../../lib/razorpay';
+import { newPaymentIdempotencyKey } from '../../lib/session-payment';
+
+test('refund policy approves valid partial refund',()=>{
+  assert.deepEqual(calculateRefund({capturedAmount:1000n,alreadyRefunded:200n,requestedAmount:300n,allowPartial:true}),{refundable:true,amount:300n,reason:'Approved by configured policy'});
+});
+test('refund policy rejects over-refund',()=>{
+  assert.equal(calculateRefund({capturedAmount:1000n,alreadyRefunded:900n,requestedAmount:101n,allowPartial:true}).refundable,false);
+});
+test('refund policy rejects partial when disabled',()=>{
+  assert.equal(calculateRefund({capturedAmount:1000n,alreadyRefunded:0n,requestedAmount:500n,allowPartial:false}).refundable,false);
+});
+test('daily close net tender subtracts refunds',()=>{
+  assert.equal(netTenderTotal({cash:1000n,upi:500n,card:250n,other:50n,refunds:200n}),1600n);
+});
+test('daily close rejects unbalanced ledger',()=>{
+  assert.throws(()=>assertDailyCloseBalanced({ledgerNet:100n,tenderNet:99n}),/out of balance/);
+});
+test('station agent state validation is strict',()=>{
+  assert.equal(isStationAgentState('ACTIVE'),true);
+  assert.equal(isStationAgentState('NOT_A_STATE'),false);
+  assert.equal(isStationAgentState(null),false);
+});
+test('station lease expiry is deterministic',()=>{
+  const lease={stationId:'ST-1',sessionId:'SES-1',expiresAt:'2026-01-01T00:00:10.000Z'};
+  assert.equal(remainingLeaseMs(lease,Date.parse('2026-01-01T00:00:00.000Z')),10000);
+  assert.equal(remainingLeaseMs(lease,Date.parse('2026-01-01T00:00:11.000Z')),0);
+  assert.equal(isExpiredIso(lease.expiresAt,Date.parse('2026-01-01T00:00:11.000Z')),true);
+});
+test('Indian mobile normalization is canonical',()=>{
+  assert.equal(normalizeMobile('98765 43210'),'+919876543210');
+  assert.equal(normalizeMobile('919876543210'),'+919876543210');
+  assert.equal(normalizeMobile('+919876543210'),'+919876543210');
+  assert.equal(normalizeMobile('12345'),'');
+});
+test('payment idempotency keys are unique and scoped',()=>{
+  const a=newPaymentIdempotencyKey(),b=newPaymentIdempotencyKey();
+  assert.notEqual(a,b); assert.match(a,/^session-pay-/); assert.match(b,/^session-pay-/);
+});
+test('Razorpay signatures reject missing/incorrect secrets',()=>{
+  const old=process.env.GENZ_RAZORPAY_KEY_SECRET;
+  delete process.env.GENZ_RAZORPAY_KEY_SECRET;
+  assert.throws(()=>verifyRazorpaySignature('order_1','pay_1','bad'),/not configured/);
+  process.env.GENZ_RAZORPAY_KEY_SECRET=old;
+});
+test('Razorpay webhook rejects missing secret',()=>{
+  const old=process.env.GENZ_RAZORPAY_WEBHOOK_SECRET;
+  delete process.env.GENZ_RAZORPAY_WEBHOOK_SECRET;
+  assert.equal(verifyRazorpayWebhook('{}','bad'),false);
+  process.env.GENZ_RAZORPAY_WEBHOOK_SECRET=old;
+});
