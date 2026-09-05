@@ -26,12 +26,15 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Optional provider-neutral POS/ECR boundary for future dynamic UPI QR/card terminal integration; disabled until the exact POS provider/model is verified.
 - Static-IP/public-origin configuration and owner remote-access/VPN deployment guidance.
 - Admin screens for sessions, settlements, **combined session receipts**, bookings, food orders, kitchen, finance, members, stations and inventory.
+- Transactional session-payment refunds with partial-refund limits, idempotency, mandatory reasons, finance reversal entries and audit logging.
 
 ## Accounting invariants
 
 Every payment is recorded transactionally and attributed to its source. Session settlement cannot exceed the server-calculated outstanding balance, cannot be captured against an open billing group, and is idempotent when a client supplies an idempotency key. Partial/split counter payments are recorded as separate entries. An ended session keeps its equipment unavailable until its bill is fully settled or an approved monthly-credit posting succeeds. Monthly credit is an audited customer receivable, not a wallet. Booking deposits are tracked separately, can be applied against the combined final session tab, and any unused remainder must be refunded before a billing group can close.
 
-The staff receipt view combines server-calculated gaming charges, itemized food orders, deposit/group allocations, billing adjustments, monthly credit and session settlement history. Receipt data is read-only and does not create or mutate financial records.
+A session refund never edits the original payment. It creates a separate captured refund linked to the original settlement, capped by that payment's remaining refundable balance. Refunds reduce the session's net paid amount and can reopen an outstanding balance; staff must settle that balance or use the approved credit workflow. A settlement with an existing refund cannot be voided, preventing contradictory financial reversals.
+
+The staff receipt view combines server-calculated gaming charges, itemized food orders, deposit/group allocations, billing adjustments, monthly credit, session payment history and payment refunds. Receipt data is read-only except for the explicit staff refund action, which creates its own auditable financial records.
 
 ## Station security
 
@@ -60,6 +63,8 @@ The canonical schema is followed by incremental migrations. Current feature migr
 - `028_session_billing_credit_accounts.sql`
 - `031_station_agent_heartbeats.sql`
 - `032_station_agent_commands.sql`
+- `033_session_payment_refunds.sql`
+- `034_session_payment_refund_idempotency.sql`
 
 Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
 
@@ -117,7 +122,7 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 3. Menu recipes/BOM, stocktake, COGS and receiving costs.
 4. Configuration screens for menu, gaming rates, station metadata and images.
 5. Customer/member search and management polish, including monthly credit UI.
-6. ~~Combined receipts foundation~~ — staff combined session receipt is implemented; continue with refunds/reversals and transactional payment reconciliation.
+6. ~~Combined receipts foundation~~ — staff combined session receipt and transactional session-payment refunds are implemented; continue with cross-source payment reconciliation.
 7. Daily close and cash-drawer controls.
 8. Station-agent heartbeat and hardware-control abstraction.
 9. Implement and verify the exact POS provider adapter for dynamic UPI QR/card terminal payments.
