@@ -2,7 +2,6 @@ import {randomUUID} from 'node:crypto';
 import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
 import {calculateRefund} from './refund-policy';
-import {getSessionSettlement} from './session-settlement';
 
 export type SessionRefundMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=()=>`REF-${randomUUID()}`;
@@ -32,8 +31,8 @@ export async function refundSessionPayment(input:{settlementId:string;amount:num
       const[existing]=await c.query<RowDataPacket[]>('SELECT id,amount,method FROM session_payment_refunds WHERE settlement_id=? AND idempotency_key=? LIMIT 1',[settlementId,key]);
       if(existing[0]){
         if(money(existing[0].amount)!==amount||String(existing[0].method)!==input.method)throw Error('IDEMPOTENCY_CONFLICT');
-        const settlement=await getSessionSettlementOnConnection(c,sessionId);
-        return{refundId:String(existing[0].id),settlementId,sessionId,amount,method:input.method,outstandingAfter:settlement.outstanding,existing:true};
+        const[summary]=await settlementSummary(c,sessionId);
+        return{refundId:String(existing[0].id),settlementId,sessionId,amount,method:input.method,outstandingAfter:summary.outstanding,existing:true};
       }
     }
 
@@ -42,10 +41,10 @@ export async function refundSessionPayment(input:{settlementId:string;amount:num
     if(!decision.refundable)throw Error(decision.reason);
 
     const refundId=id();
-    await c.execute('INSERT INTO session_payment_refunds(id,settlement_id,session_id,amount,method,status,reference,idempotency_key,reason,created_by,created_at) VALUES(?,?,?,?,\'CAPTURED\',?,?,?,?,?,NOW(3))',[refundId,settlementId,sessionId,amount,input.method,input.reference?.trim().slice(0,120)||null,key,reason,input.staffId]);
+    await c.execute('INSERT INTO session_payment_refunds(id,settlement_id,session_id,amount,method,status,reference,idempotency_key,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW(3))',[refundId,settlementId,sessionId,amount,input.method,'CAPTURED',input.reference?.trim().slice(0,120)||null,key,reason,input.staffId]);
     await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[`FIN-${randomUUID()}`,'EXPENSE','PAYMENT_REFUND','Session payment refund '+settlementId,amount,input.method,'SESSION_PAYMENT_REFUND',refundId,input.staffId]);
 
-    const summary=await getSessionSettlementOnConnection(c,sessionId);
+    const[summary]=await settlementSummary(c,sessionId);
     const status=summary.outstanding===0?'SETTLED':summary.paid>0?'PARTIALLY_PAID':'DUE';
     await c.execute('UPDATE sessions SET settlement_status=? WHERE id=?',[status,sessionId]);
     if(summary.outstanding>0)await c.execute("UPDATE stations SET status='BLOCKED' WHERE id=? AND status='AVAILABLE'",[sessions[0].station_id]);
@@ -53,7 +52,7 @@ export async function refundSessionPayment(input:{settlementId:string;amount:num
   });
 }
 
-async function getSessionSettlementOnConnection(c:PoolConnection,sessionId:string){
+async function settlementSummary(c:PoolConnection,sessionId:string){
   const{calculateSessionBilling}=await import('./gaming-billing');
   const[s]=await c.query<RowDataPacket[]>('SELECT id,status,settlement_status FROM sessions WHERE id=? LIMIT 1',[sessionId]);
   if(!s[0])throw Error('SESSION_NOT_FOUND');
@@ -67,12 +66,9 @@ async function getSessionSettlementOnConnection(c:PoolConnection,sessionId:strin
   const[cr]=await c.query<RowDataPacket[]>("SELECT COALESCE(SUM(amount),0) total FROM customer_credit_entries WHERE source_type='SESSION' AND source_id=?",[sessionId]);
   const[adj]=await c.query<RowDataPacket[]>("SELECT COALESCE(SUM(amount),0) total FROM billing_adjustments WHERE session_id=?",[sessionId]);
   const grossBeforePayments=Math.max(0,Math.max(0,billing.gamingTotal-money(ga[0]?.total))+Math.max(0,money(food[0]?.total)-money(fa[0]?.total))-money(da[0]?.total)+money(adj[0]?.total));
-  const creditApplied=money(cr[0]?.total);
-  const captured=money(sp[0]?.total);
-  const refunded=money(sr[0]?.total);
-  const paid=Math.max(0,captured-refunded);
-  const gross=Math.max(0,grossBeforePayments-creditApplied);
-  return{sessionId,status:String(s[0].status),gamingTotal:billing.gamingTotal,foodTotal:money(food[0]?.total),depositApplied:money(da[0]?.total),groupAllocatedGaming:money(ga[0]?.total),groupAllocatedFood:money(fa[0]?.total),adjustments:money(adj[0]?.total),creditApplied,paid,refunded,outstanding:Math.max(0,gross-paid),currency:'INR',settlementStatus:String(s[0].settlement_status||'NOT_DUE')};
+  const creditApplied=money(cr[0]?.total),captured=money(sp[0]?.total),refunded=money(sr[0]?.total);
+  const paid=Math.max(0,captured-refunded),gross=Math.max(0,grossBeforePayments-creditApplied);
+  return[{sessionId,status:String(s[0].status),gamingTotal:billing.gamingTotal,foodTotal:money(food[0]?.total),depositApplied:money(da[0]?.total),groupAllocatedGaming:money(ga[0]?.total),groupAllocatedFood:money(fa[0]?.total),adjustments:money(adj[0]?.total),creditApplied,paid,refunded,outstanding:Math.max(0,gross-paid),currency:'INR',settlementStatus:String(s[0].settlement_status||'NOT_DUE')}];
 }
 
 export async function listSessionRefunds(sessionId:string){
