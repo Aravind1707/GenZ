@@ -1,0 +1,62 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${GENZ_DB_NAME:-genz_os}
+      MYSQL_USER: ${GENZ_DB_USER:-genz_app}
+      MYSQL_PASSWORD: ${GENZ_DB_PASSWORD:?Set GENZ_DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - genz_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [genz]
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GENZ_DB_HOST: mysql
+      GENZ_DB_PORT: 3306
+      GENZ_DB_NAME: ${GENZ_DB_NAME:-genz_os}
+      GENZ_DB_USER: ${GENZ_DB_USER:-genz_app}
+      GENZ_DB_PASSWORD: ${GENZ_DB_PASSWORD}
+      GENZ_DB_POOL_SIZE: ${GENZ_DB_POOL_SIZE:-10}
+      GENZ_PUBLIC_BASE_URL: ${GENZ_PUBLIC_BASE_URL:-http://localhost:3000}
+      GENZ_OWNER_REMOTE_ACCESS_ENABLED: ${GENZ_OWNER_REMOTE_ACCESS_ENABLED:-false}
+      GENZ_OWNER_REMOTE_ACCESS_MODE: ${GENZ_OWNER_REMOTE_ACCESS_MODE:-VPN}
+      GENZ_OTP_MSG91_AUTHKEY: ${GENZ_OTP_MSG91_AUTHKEY:-}
+      GENZ_OTP_MSG91_SENDER_ID: ${GENZ_OTP_MSG91_SENDER_ID:-}
+      GENZ_OTP_DEV_MODE: ${GENZ_OTP_DEV_MODE:-false}
+      GENZ_RAZORPAY_KEY_ID: ${GENZ_RAZORPAY_KEY_ID:-}
+      GENZ_RAZORPAY_KEY_SECRET: ${GENZ_RAZORPAY_KEY_SECRET:-}
+      GENZ_RAZORPAY_WEBHOOK_SECRET: ${GENZ_RAZORPAY_WEBHOOK_SECRET:-}
+      GENZ_POS_PROVIDER: ${GENZ_POS_PROVIDER:-NONE}
+      GENZ_POS_INTEGRATION_ENABLED: ${GENZ_POS_INTEGRATION_ENABLED:-false}
+      GENZ_POS_DYNAMIC_UPI_QR_ENABLED: ${GENZ_POS_DYNAMIC_UPI_QR_ENABLED:-false}
+      GENZ_POS_CARD_ENABLED: ${GENZ_POS_CARD_ENABLED:-false}
+      GENZ_POS_AUTO_CONFIRM_ENABLED: ${GENZ_POS_AUTO_CONFIRM_ENABLED:-false}
+      GENZ_STAFF_INITIAL_USERNAME: ${GENZ_STAFF_INITIAL_USERNAME:-owner}
+      GENZ_STAFF_INITIAL_NAME: ${GENZ_STAFF_INITIAL_NAME:-Owner}
+      GENZ_STAFF_INITIAL_PASSWORD: ${GENZ_STAFF_INITIAL_PASSWORD:-}
+      GENZ_TRUST_PROXY: ${GENZ_TRUST_PROXY:-false}
+      GENZ_STATION_AGENT_SECRETS_JSON: ${GENZ_STATION_AGENT_SECRETS_JSON:-{}}
+      GENZ_RUN_MIGRATIONS: ${GENZ_RUN_MIGRATIONS:-true}
+    ports:
+      - "${GENZ_APP_PORT:-3000}:3000"
+    networks: [genz]
+
+volumes:
+  genz_mysql:
+
+networks:
+  genz:
