@@ -8,7 +8,7 @@ export async function getCustomerPricing(memberId?:string|null):Promise<Customer
  const member=memberQuery[0][0]; const activeMember=!!member&&!!member.active&&new Date(`${member.expires_at}T23:59:59`).getTime()>=Date.now();
  const [gaming]=await pool.query<(RowDataPacket & {id:string;label:string;station_type:string;pc_tier:string|null;specs:string|null;image_url:string|null;regular_price:number;member_price:number;unit_label:string})[]>('SELECT id,label,station_type,pc_tier,specs,image_url,regular_price,member_price,unit_label FROM gaming_rates WHERE active=TRUE ORDER BY FIELD(station_type,"PC","PS5","PS4","PSVR","MOZA"),pc_tier,label');
  const [food]=await pool.query<(RowDataPacket & {id:string;name:string;category:string;image_url:string|null;member_price:number;non_member_price:number;stock_qty:number;available:number})[]>(`SELECT m.id,m.name,m.category,m.image_url,m.member_price,m.non_member_price,m.stock_qty,
-   CASE WHEN EXISTS(SELECT 1 FROM menu_item_recipes r LEFT JOIN inventory_material_stock s ON s.material_id=r.material_id WHERE r.menu_item_id=m.id AND COALESCE(s.on_hand,0)-COALESCE(s.reserved,0)<r.qty_per_item)
+   CASE WHEN EXISTS(SELECT 1 FROM menu_item_recipes r LEFT JOIN inventory_material_stock s ON s.material_id=r.material_id WHERE r.menu_item_id=m.id AND (COALESCE(s.on_hand,0)-COALESCE(s.reserved,0)<r.qty_per_item OR (SELECT COALESCE(SUM(b.remaining_qty),0) FROM inventory_batches b WHERE b.material_id=r.material_id AND b.remaining_qty>0 AND (b.expiry_at IS NULL OR b.expiry_at>=CURDATE()))<r.qty_per_item))
         THEN 0
         WHEN EXISTS(SELECT 1 FROM menu_item_recipes r WHERE r.menu_item_id=m.id)
         THEN 1
