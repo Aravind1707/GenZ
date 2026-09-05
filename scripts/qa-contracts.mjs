@@ -27,7 +27,7 @@ check('unavailable food has image overlay', has('app/customer/FoodCart.tsx', /NO
 check('unavailable food cannot be added', has('app/customer/FoodCart.tsx', /if\(!item\?\.available\)return/) && has('app/customer/FoodCart.tsx', /disabled=\{!i\.available\}/));
 
 // Billing/payment safety contracts.
-check('session settlement gates station release on outstanding balance', has('lib/session-settlement.ts', /outstanding\s*<=\s*0/) && has('lib/session-settlement.ts', /release/));
+check('session settlement gates station release on zero outstanding', has('lib/session-settlement.ts', /if\(after===0\)await c\.execute\([\s\S]*stations SET status='AVAILABLE'/));
 check('refunds are idempotent', has('lib/session-refunds.ts', /idempot/) && has('db/migrations/034_session_payment_refund_idempotency.sql', /idempot/));
 check('refund provider fields exist', has('db/migrations/041_session_refund_provider.sql', /provider_status/) && has('lib/session-refunds.ts', /provider/));
 check('daily close approval has persisted status', has('db/migrations/042_daily_close_approval.sql', /APPROVED/) && has('lib/daily-close-report.ts', /approvalStatus/));
