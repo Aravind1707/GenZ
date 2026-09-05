@@ -14,7 +14,7 @@ export async function createMembership(input:{id?:string;name:string;mobile:stri
   const memberId=(input.id||`MEM-${randomUUID().replaceAll('-','').slice(0,16)}`).trim();
   const expiresAt=dateOnly(input.expiresAt);
   const amount=money(Number(input.amount));
-  if(!expiresAt||!input.name.trim()||!/^\d{7,20}$/.test(input.mobile.replace(/[^0-9]/g,'')))throw Error('INVALID_MEMBER_DETAILS');
+  if(!expiresAt||!input.name.trim()||/^[0-9+() -]{7,20}$/.test(input.mobile.trim())===false)throw Error('INVALID_MEMBER_DETAILS');
   if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw Error('INVALID_TIER');
   if(!['CASH','UPI','CARD','RAZORPAY','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
   if(amount<0)throw Error('INVALID_MEMBERSHIP_AMOUNT');
