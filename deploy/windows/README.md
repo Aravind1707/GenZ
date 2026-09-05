@@ -67,14 +67,14 @@ The migration must finish successfully before starting the app.
 
 ```powershell
 cd C:\GenZ
-a.\deploy\windows\register-genz-service.ps1
+.\deploy\windows\register-genz-service.ps1
 ```
 
 The script registers a SYSTEM scheduled task named `GenZOS` and starts `next start` on port 3000.
 
 ## 7. HTTPS reverse proxy
 
-Install a supported reverse proxy such as Caddy on the same server. Copy `Caddyfile` to the Caddy configuration directory and set the `GENZ_PUBLIC_HOST` environment variable to the exact public DNS hostname, for example `order.yourcafe.in`.
+Install a supported reverse proxy such as Caddy on the same server. Copy `Caddyfile` to the Caddy configuration directory and replace `{$GENZ_PUBLIC_HOST}` with the exact public DNS hostname, for example `order.yourcafe.in`.
 
 Caddy should terminate TLS and proxy to `127.0.0.1:3000`. It can obtain/renew a public certificate automatically when DNS and router access are correct.
 
@@ -86,7 +86,7 @@ Run as Administrator:
 
 ```powershell
 cd C:\GenZ
-a.\deploy\windows\configure-firewall.ps1
+.\deploy\windows\configure-firewall.ps1
 ```
 
 The application port is restricted to Domain/Private profiles; HTTPS 443 is opened for the reverse proxy. Adjust the rule scope to the café LAN/reverse-proxy host if the topology differs.
