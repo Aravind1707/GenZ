@@ -1,0 +1,6 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {COOKIE,requireStaff} from '../../../../lib/staff-auth';
+import {getFinanceReport,reportCsv} from '../../../../lib/finance-reports';
+const date=(v:string|null)=>v&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v:new Date().toISOString().slice(0,10);
+export async function GET(req:Request){try{await requireStaff((await cookies()).get(COOKIE)?.value,'finance:read');const q=new URL(req.url).searchParams,d=date(q.get('date'))!,period=(q.get('period')||'day') as 'day'|'week'|'month';if(!['day','week','month'].includes(period))throw Error('INVALID_REPORT_PERIOD');const report=await getFinanceReport(d,period);if(q.get('format')==='csv')return new Response(reportCsv(report),{headers:{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="genz-finance-${period}-${report.start}.csv"`}});return NextResponse.json({ok:true,report},{headers:{'Cache-Control':'no-store'}})}catch(e){const m=e instanceof Error?e.message:'';return NextResponse.json({ok:false,error:m==='STAFF_FORBIDDEN'?'Permission denied':m==='STAFF_UNAUTHORIZED'?'Staff authorization required':m||'Unable to load finance report'},{status:m==='STAFF_FORBIDDEN'?403:m==='STAFF_UNAUTHORIZED'?401:400})}}
