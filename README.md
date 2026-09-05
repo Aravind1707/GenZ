@@ -25,7 +25,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Static-IP/Windows deployment foundation with HTTPS/firewall/VPN guidance.
 - Docker + Docker Compose deployment for a repeatable admin-PC installation with persistent MySQL and automatic migrations.
 - Combined staff receipts and immutable transactional session-payment refunds.
-- Daily-close tender/refund/expense reporting, physical cash variance and persistent OWNER approval.
+- **Daily-close accounting:** staff cash count, OWNER approval, cash variance, credit sales/repayments, booking-deposit treatment, exception blocking, period locking, OWNER reopen authorization, daily/weekly/monthly reports, CSV export and cash-drawer audit trail.
 - OWNER administration for catalogue, rates, stations, member rules and staff lifecycle.
 - External finance reconciliation matching for incoming and outgoing ledger records with amount exceptions.
 - Provider-aware session refund references/status fields.
@@ -34,7 +34,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 
 ## Database migrations
 
-The canonical migration directory currently contains numbered migrations through `044`. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers, including compatibility with legacy migrations that predate schema markers.
+The canonical migration directory currently contains numbered migrations through `046`. Migration `046_daily_close_controls.sql` adds the close-event audit trail and reopen counter. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers and the accounting/payment contracts.
 
 ## Fast deployment
 
@@ -84,7 +84,7 @@ Staff and customer sessions use hashed tokens with expiry/inactivity limits. Bro
 
 ## Remaining build order
 
-1. **Payment/finance:** official provider API import/webhook matching and exception-resolution tooling where the provider exposes a verified API.
+1. **Payment/finance:** continue provider-specific hardening, external reference mapping and exception-resolution polish.
 2. **Inventory:** complete stocktake/supplier/expiry UX and verify COGS against real delivered orders.
 3. **Admin:** complete effective-date pricing, station overrides, customer lifecycle and richer staff UX.
 4. **Station hardware:** verified Windows kiosk/session launch, safe unlock/start, WOL/shutdown and console/VR/MOZA adapters only after exact hardware APIs are verified.
