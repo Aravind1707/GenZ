@@ -98,12 +98,5 @@ jobs:
           mkdir -p security
           npm audit --json > security/npm-audit.json || true
           npm audit --audit-level=critical
-      - name: Upload dependency audit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: genz-security-audit
-          path: security/npm-audit.json
-          retention-days: 14
       - name: Source security contract checks
         run: npm run test:qa
