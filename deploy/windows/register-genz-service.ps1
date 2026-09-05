@@ -1,17 +1,16 @@
-$ErrorActionPreference = 'Stop'
-
 param(
   [string]$InstallDir = 'C:\GenZ',
   [string]$ServiceName = 'GenZOS',
   [int]$Port = 3000
 )
 
+$ErrorActionPreference = 'Stop'
+
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   throw 'Run PowerShell as Administrator.'
 }
 
-$node = (Get-Command node -ErrorAction Stop).Source
-$npm = (Get-Command npm -ErrorAction Stop).Source
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js is required.' }
 if (-not (Test-Path (Join-Path $InstallDir 'package.json'))) { throw "GenZ was not found at $InstallDir." }
 
 $envFile = Join-Path $InstallDir '.env.local'
@@ -27,4 +26,4 @@ Register-ScheduledTask -TaskName $ServiceName -Action $action -Trigger $trigger 
 Start-ScheduledTask -TaskName $ServiceName
 
 Write-Host "GenZ scheduled service '$ServiceName' registered and started on port $Port."
-Write-Host 'Use Windows Firewall to allow TCP 3000 only from the LAN/reverse proxy, and expose only HTTPS 443 on the router.'
+Write-Host 'Allow TCP 3000 only from the reverse proxy/LAN. Expose only HTTPS 443 on the router.'
