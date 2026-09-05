@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import type {RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
+import {assertDailyCloseOpen} from './daily-close-lock';
 
 export type MembershipPaymentMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=(p:string)=>`${p}-${randomUUID()}`;
@@ -9,10 +10,11 @@ const dateOnly=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'';
 
 export async function createMembership(input:{id?:string;name:string;mobile:string;tier:'REGULAR'|'GOLD'|'VIP';expiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
  return transaction(async c=>{
+  await assertDailyCloseOpen(c);
   const memberId=(input.id||`MEM-${randomUUID().replaceAll('-','').slice(0,16)}`).trim();
   const expiresAt=dateOnly(input.expiresAt);
   const amount=money(Number(input.amount));
-  if(!expiresAt||!input.name.trim()||!/^[0-9+() -]{7,20}$/.test(input.mobile.trim()))throw Error('INVALID_MEMBER_DETAILS');
+  if(!expiresAt||!input.name.trim()||!/^\d{7,20}$/.test(input.mobile.replace(/[^0-9]/g,'')))throw Error('INVALID_MEMBER_DETAILS');
   if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw Error('INVALID_TIER');
   if(!['CASH','UPI','CARD','RAZORPAY','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
   if(amount<0)throw Error('INVALID_MEMBERSHIP_AMOUNT');
@@ -30,6 +32,7 @@ export async function createMembership(input:{id?:string;name:string;mobile:stri
 
 export async function renewMembership(input:{memberId:string;newExpiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
  return transaction(async c=>{
+  await assertDailyCloseOpen(c);
   const memberId=input.memberId.trim();
   const expiresAt=dateOnly(input.newExpiresAt);
   const amount=money(Number(input.amount));
