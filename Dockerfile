@@ -1,18 +1,26 @@
-FROM node:20-alpine AS deps
+FROM node:24.20.0-alpine AS deps
 WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY package*.json ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 
-FROM node:20-alpine AS build
+FROM node:24.20.0-alpine AS build
 WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run test:integrity && npm run test:unit && npm run build
 
-FROM node:20-alpine AS runtime
+FROM node:24.20.0-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app ./
-RUN chmod +x ./docker-entrypoint.sh
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+COPY --from=build --chown=node:node /app ./
+RUN npm prune --omit=dev \
+  && chmod 0555 ./docker-entrypoint.sh \
+  && find . -type f -not -path './node_modules/*' -exec chmod 0444 {} + \
+  && chmod 0555 .
+USER node
 EXPOSE 3000
 ENTRYPOINT ["./docker-entrypoint.sh"]
