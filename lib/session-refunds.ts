@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
 import {calculateRefund} from './refund-policy';
+import {assertDailyCloseOpen} from './daily-close-lock';
 
 export type SessionRefundMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=()=>`REF-${randomUUID()}`;
@@ -9,6 +10,7 @@ const money=(v:unknown)=>Number(v||0);
 
 export async function refundSessionPayment(input:{settlementId:string;amount:number;method:SessionRefundMethod;staffId:string;reason:string;reference?:string;provider?:string;externalReference?:string;idempotencyKey?:string}){
   return transaction(async(c:PoolConnection)=>{
+    await assertDailyCloseOpen(c);
     const settlementId=input.settlementId.trim();
     const amount=Number(input.amount);
     const reason=input.reason.trim().slice(0,255);
