@@ -25,11 +25,13 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Staff model is OWNER + MANAGER; legacy specialist roles are migrated to MANAGER.
 - Optional provider-neutral POS/ECR boundary for future dynamic UPI QR/card terminal integration; disabled until the exact POS provider/model is verified.
 - Static-IP/public-origin configuration and owner remote-access/VPN deployment guidance.
-- Admin screens for sessions, settlements, bookings, food orders, kitchen, finance, members, stations and inventory.
+- Admin screens for sessions, settlements, **combined session receipts**, bookings, food orders, kitchen, finance, members, stations and inventory.
 
 ## Accounting invariants
 
 Every payment is recorded transactionally and attributed to its source. Session settlement cannot exceed the server-calculated outstanding balance, cannot be captured against an open billing group, and is idempotent when a client supplies an idempotency key. Partial/split counter payments are recorded as separate entries. An ended session keeps its equipment unavailable until its bill is fully settled or an approved monthly-credit posting succeeds. Monthly credit is an audited customer receivable, not a wallet. Booking deposits are tracked separately, can be applied against the combined final session tab, and any unused remainder must be refunded before a billing group can close.
+
+The staff receipt view combines server-calculated gaming charges, itemized food orders, deposit/group allocations, billing adjustments, monthly credit and session settlement history. Receipt data is read-only and does not create or mutate financial records.
 
 ## Station security
 
@@ -56,6 +58,8 @@ The canonical schema is followed by incremental migrations. Current feature migr
 - `026_finance_booking_deposit_cleanup.sql`
 - `027_staff_owner_manager_roles.sql`
 - `028_session_billing_credit_accounts.sql`
+- `031_station_agent_heartbeats.sql`
+- `032_station_agent_commands.sql`
 
 Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
 
@@ -113,7 +117,7 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 3. Menu recipes/BOM, stocktake, COGS and receiving costs.
 4. Configuration screens for menu, gaming rates, station metadata and images.
 5. Customer/member search and management polish, including monthly credit UI.
-6. Combined receipts, refunds/reversals and payment reconciliation.
+6. ~~Combined receipts foundation~~ — staff combined session receipt is implemented; continue with refunds/reversals and transactional payment reconciliation.
 7. Daily close and cash-drawer controls.
 8. Station-agent heartbeat and hardware-control abstraction.
 9. Implement and verify the exact POS provider adapter for dynamic UPI QR/card terminal payments.
