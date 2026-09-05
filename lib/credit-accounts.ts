@@ -1,0 +1,70 @@
+import {randomUUID} from 'node:crypto';
+import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
+import {pool,transaction} from './mysql';
+import type {SessionSettlementMethod} from './session-settlement';
+
+export type CreditPaymentMethod='CASH'|'UPI'|'CARD'|'OTHER';
+const id=(p:string)=>`${p}-${randomUUID()}`;
+const money=(v:unknown)=>Number(v||0);
+
+async function balanceOn(c:PoolConnection,customerId:string){
+ const [charges]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM customer_credit_entries WHERE customer_id=?',[customerId]);
+ const [payments]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM customer_credit_payments WHERE customer_id=?',[customerId]);
+ return Math.max(0,money(charges[0]?.total)-money(payments[0]?.total));
+}
+
+export async function getCreditAccount(customerId:string){
+ return transaction(async(c)=>{
+  const [rows]=await c.query<RowDataPacket[]>('SELECT a.customer_id,a.status,a.credit_limit,a.billing_cycle,a.approved_by,a.approved_at,a.created_at,a.updated_at,c.name,c.mobile FROM customer_credit_accounts a JOIN customers c ON c.id=a.customer_id WHERE a.customer_id=? LIMIT 1',[customerId]);
+  if(!rows[0])return null;
+  const balance=await balanceOn(c,customerId);
+  return {...rows[0],creditLimit:money(rows[0].credit_limit),balance,availableCredit:Math.max(0,money(rows[0].credit_limit)-balance)};
+ });
+}
+
+export async function enableCreditAccount(input:{customerId:string;creditLimit:number;staffId:string;billingCycle?:'MONTHLY'|'MANUAL'}){
+ const limit=Number(input.creditLimit);if(!Number.isSafeInteger(limit)||limit<0)throw Error('INVALID_CREDIT_LIMIT');
+ return transaction(async(c)=>{
+  const [customer]=await c.query<RowDataPacket[]>('SELECT id FROM customers WHERE id=? LIMIT 1',[input.customerId]);if(!customer[0])throw Error('CUSTOMER_NOT_FOUND');
+  await c.execute('INSERT INTO customer_credit_accounts(customer_id,status,credit_limit,billing_cycle,approved_by,approved_at,created_at,updated_at) VALUES(?,?,?, ?,?,NOW(3),NOW(3),NOW(3)) ON DUPLICATE KEY UPDATE status=\'ACTIVE\',credit_limit=VALUES(credit_limit),billing_cycle=VALUES(billing_cycle),approved_by=VALUES(approved_by),approved_at=NOW(3),updated_at=NOW(3)',[input.customerId,'ACTIVE',limit,input.billingCycle||'MONTHLY',input.staffId]);
+  return getCreditAccountOn(c,input.customerId);
+ });
+}
+
+export async function suspendCreditAccount(customerId:string,staffId:string){return transaction(async(c)=>{const [r]=await c.execute('UPDATE customer_credit_accounts SET status=\'SUSPENDED\',updated_at=NOW(3),approved_by=? WHERE customer_id=?',[staffId,customerId]);if((r as {affectedRows:number}).affectedRows!==1)throw Error('CREDIT_ACCOUNT_NOT_FOUND');return true;});}
+
+async function getCreditAccountOn(c:PoolConnection,customerId:string){
+ const [rows]=await c.query<RowDataPacket[]>('SELECT a.customer_id,a.status,a.credit_limit,a.billing_cycle,a.approved_by,a.approved_at,a.created_at,a.updated_at,c.name,c.mobile FROM customer_credit_accounts a JOIN customers c ON c.id=a.customer_id WHERE a.customer_id=? LIMIT 1',[customerId]);if(!rows[0])return null;const balance=await balanceOn(c,customerId);return {...rows[0],creditLimit:money(rows[0].credit_limit),balance,availableCredit:Math.max(0,money(rows[0].credit_limit)-balance)};
+}
+
+export async function chargeSessionToCredit(input:{sessionId:string;customerId:string;staffId:string}){
+ return transaction(async(c)=>{
+  const [account]=await c.query<RowDataPacket[]>('SELECT customer_id,status,credit_limit FROM customer_credit_accounts WHERE customer_id=? FOR UPDATE',[input.customerId]);
+  if(!account[0]||String(account[0].status)!=='ACTIVE')throw Error('CREDIT_ACCOUNT_INACTIVE');
+  const [session]=await c.query<RowDataPacket[]>('SELECT id,customer_id,status,settlement_status FROM sessions WHERE id=? FOR UPDATE',[input.sessionId]);
+  if(!session[0])throw Error('SESSION_NOT_FOUND');
+  if(session[0].customer_id&&String(session[0].customer_id)!==input.customerId)throw Error('SESSION_CUSTOMER_MISMATCH');
+  const [existing]=await c.query<RowDataPacket[]>('SELECT id,amount FROM customer_credit_entries WHERE source_type=\'SESSION\' AND source_id=? LIMIT 1',[input.sessionId]);
+  if(existing[0])return {entryId:String(existing[0].id),amount:money(existing[0].amount),existing:true};
+  const {calculateSessionBilling}=await import('./gaming-billing');
+  const billing=await calculateSessionBilling(input.sessionId,c);
+  const [food]=await c.query<RowDataPacket[]>("SELECT COALESCE(SUM(oi.qty*oi.unit_price),0) total FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.session_id=? AND o.payment_status IN ('UNPAID','FAILED') AND o.status<>'CANCELLED'",[input.sessionId]);
+  const [paid]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM session_settlements WHERE session_id=? AND status=\'CAPTURED\'',[input.sessionId]);
+  const [deposit]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM booking_deposit_applications WHERE session_id=?',[input.sessionId]);
+  const [ga]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE source_type=\'GAMING_SESSION\' AND source_id=?',[input.sessionId]);
+  const [fa]=await c.query<RowDataPacket[]>('SELECT COALESCE(SUM(amount),0) total FROM group_settlement_allocations WHERE session_id=? AND source_type=\'FOOD_ORDER_ITEM\'',[input.sessionId]);
+  const gross=Math.max(0,Math.max(0,billing.gamingTotal-money(ga[0]?.total))+Math.max(0,money(food[0]?.total)-money(fa[0]?.total))-money(deposit[0]?.total)-money(paid[0]?.total));
+  if(gross<=0)throw Error('NO_OUTSTANDING_BALANCE');
+  const current=await balanceOn(c,input.customerId);const limit=money(account[0].credit_limit);if(current+gross>limit)throw Error('CREDIT_LIMIT_EXCEEDED');
+  const entryId=id('CRD');await c.execute('INSERT INTO customer_credit_entries(id,customer_id,source_type,source_id,description,amount,created_by,created_at) VALUES(?,?,?,?,?,?,?,NOW(3))',[entryId,input.customerId,'SESSION',input.sessionId,'Gaming + food session '+input.sessionId,gross,input.staffId]);
+  await c.execute('UPDATE sessions SET settlement_status=\'CREDIT\' WHERE id=?',[input.sessionId]);
+  return {entryId,amount:gross,existing:false,balanceAfter:current+gross};
+ });
+}
+
+export async function recordCreditPayment(input:{customerId:string;amount:number;method:CreditPaymentMethod;staffId:string;reference?:string}){
+ const amount=Number(input.amount);if(!Number.isSafeInteger(amount)||amount<=0)throw Error('INVALID_PAYMENT_AMOUNT');if(!['CASH','UPI','CARD','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
+ return transaction(async(c)=>{const [a]=await c.query<RowDataPacket[]>('SELECT customer_id,status FROM customer_credit_accounts WHERE customer_id=? FOR UPDATE',[input.customerId]);if(!a[0]||String(a[0].status)==='CLOSED')throw Error('CREDIT_ACCOUNT_NOT_FOUND');const balance=await balanceOn(c,input.customerId);if(amount>balance)throw Error('PAYMENT_EXCEEDS_CREDIT_BALANCE');const paymentId=id('CRP');await c.execute('INSERT INTO customer_credit_payments(id,customer_id,method,amount,reference,created_by,created_at) VALUES(?,?,?,?,?,?,NOW(3))',[paymentId,input.customerId,input.method,amount,input.reference?.trim().slice(0,120)||null,input.staffId]);const after=balance-amount;return {paymentId,amount,method:input.method,balanceAfter:after};});
+}
+
+export async function getCreditStatement(customerId:string){return transaction(async(c)=>{const account=await getCreditAccountOn(c,customerId);if(!account)throw Error('CREDIT_ACCOUNT_NOT_FOUND');const [charges]=await c.query<RowDataPacket[]>('SELECT id,source_type,source_id,description,amount,created_by,created_at FROM customer_credit_entries WHERE customer_id=? ORDER BY created_at ASC',[customerId]);const [payments]=await c.query<RowDataPacket[]>('SELECT id,method,amount,reference,created_by,created_at FROM customer_credit_payments WHERE customer_id=? ORDER BY created_at ASC',[customerId]);return{account,charges:charges.map(x=>({...x,amount:money(x.amount)})),payments:payments.map(x=>({...x,amount:money(x.amount)}))};});}
