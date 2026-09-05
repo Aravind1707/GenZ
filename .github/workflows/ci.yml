@@ -9,18 +9,24 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  security-events: write
 jobs:
   unit-build:
     name: Unit + production build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.20.0
+          cache: npm
       - run: npm install
       - run: npm test
+      - name: TypeScript validation
+        run: npx tsc --noEmit
+      - name: ESLint
+        run: npm run lint
       - name: Coverage report
         run: mkdir -p coverage && npm run test:coverage > coverage/unit-coverage.txt 2>&1
       - name: Upload coverage report
@@ -34,7 +40,7 @@ jobs:
   mysql-integration:
     name: MySQL integration + concurrency
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.4
@@ -61,7 +67,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.20.0
+          cache: npm
       - run: npm install
       - run: npm run db:migrate
       - run: npm run db:migrate
@@ -69,7 +76,7 @@ jobs:
   docker:
     name: Docker build + Compose validation
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Validate Compose configuration
@@ -83,24 +90,27 @@ jobs:
   security:
     name: Dependency + security checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.20.0
+          cache: npm
       - run: npm install
       - name: Dependency audit
         run: |
           mkdir -p security
           npm audit --json > security/npm-audit.json || true
-          npm audit --audit-level=critical
+          npm audit --audit-level=high
+      - name: Package signature/provenance audit
+        run: npm audit signatures > security/npm-signatures.txt || true
       - name: Upload dependency audit
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: genz-security-audit
-          path: security/npm-audit.json
+          path: security/
           retention-days: 14
       - name: Source security contract checks
         run: npm run test:qa
