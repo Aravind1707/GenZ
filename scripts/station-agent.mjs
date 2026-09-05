@@ -10,6 +10,8 @@ const agentId=(process.env.GENZ_STATION_AGENT_ID||`${stationId}-${process.pid}`)
 const version=(process.env.GENZ_STATION_AGENT_VERSION||'0.1.0').slice(0,64);
 let agentState='IDLE';
 let currentSessionId=null;
+let leaseExpiresAt=null;
+let polling=false;
 
 if(!stationId||!secret||secret.length<32)throw new Error('Set GENZ_STATION_ID and a 32+ character GENZ_STATION_AGENT_SECRET.');
 
@@ -17,13 +19,62 @@ async function getChallenge(){
   const response=await fetch(`${serverUrl}/api/station-agent/challenge`,{method:'POST',headers:{'content-type':'application/json','x-genz-station-secret':secret},body:JSON.stringify({stationId})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data.ok)throw new Error(data.error||`Challenge request failed (${response.status})`);
-  return data.challenge;
+  return data;
 }
 
 async function heartbeat(){
   try{
     await fetch(`${serverUrl}/api/station-agent/heartbeat`,{method:'POST',headers:{'content-type':'application/json','x-genz-station-secret':secret},body:JSON.stringify({stationId,agentId,state:agentState,sessionId:currentSessionId,observedAt:new Date().toISOString(),version})});
   }catch(error){console.error('Heartbeat failed:',error instanceof Error?error.message:error);}
+}
+
+function lockStation(reason){
+  agentState='LOCKED';
+  currentSessionId=null;
+  leaseExpiresAt=null;
+  console.warn(`Station locked: ${reason}`);
+  if(process.platform==='win32')exec('rundll32.exe user32.dll,LockWorkStation',()=>{});
+  heartbeat();
+}
+
+function applyCommand(command){
+  if(!command||typeof command!=='object')return;
+  if(command.type==='START_SESSION'||command.type==='RESUME_SESSION'){
+    const expires=Date.parse(command.expiresAt);
+    if(!command.sessionId||!Number.isFinite(expires)||expires<=Date.now()){lockStation('Session lease already expired');return;}
+    currentSessionId=String(command.sessionId);leaseExpiresAt=expires;agentState='ACTIVE';
+    console.log(`Session active: ${currentSessionId}`);
+  }else if(command.type==='PAUSE_SESSION'){
+    if(currentSessionId&&String(command.sessionId)===currentSessionId)agentState='PAUSED';
+  }else if(command.type==='LOCK_STATION'){
+    if(!command.sessionId||!currentSessionId||String(command.sessionId)===currentSessionId)lockStation('Server command');
+  }else if(command.type==='SHUTDOWN'){
+    agentState='STOPPING';heartbeat();
+    if(process.platform==='win32')exec('shutdown.exe /s /t 5 /d p:4:1 /c "GenZ station shutdown"',()=>{});
+    else exec('shutdown -h +1',()=>{});
+  }
+}
+
+async function pollCommands(){
+  if(polling)return;
+  polling=true;
+  try{
+    const response=await fetch(`${serverUrl}/api/station-agent/commands?stationId=${encodeURIComponent(stationId)}`,{headers:{'x-genz-station-secret':secret},cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.ok||!data.command)return;
+    const command=data.command;
+    try{
+      applyCommand(command.command);
+      await fetch(`${serverUrl}/api/station-agent/commands`,{method:'PATCH',headers:{'content-type':'application/json','x-genz-station-secret':secret},body:JSON.stringify({stationId,commandId:command.id,accepted:true,message:'Applied by station agent'})});
+    }catch(error){
+      await fetch(`${serverUrl}/api/station-agent/commands`,{method:'PATCH',headers:{'content-type':'application/json','x-genz-station-secret':secret},body:JSON.stringify({stationId,commandId:command.id,accepted:false,message:error instanceof Error?error.message:'Command rejected'})}).catch(()=>{});
+    }
+  }catch(error){console.error('Command poll failed:',error instanceof Error?error.message:error);}
+  finally{polling=false;}
+}
+
+function enforceLease(){
+  if(leaseExpiresAt&&leaseExpiresAt<=Date.now())lockStation('Session lease expired');
 }
 
 async function render(res){
@@ -37,6 +88,6 @@ async function render(res){
 }
 
 const server=http.createServer((req,res)=>{if(req.url!=='/'&&req.url!=='/health'){res.writeHead(404);return res.end('Not found');}if(req.url==='/health'){res.writeHead(200,{'content-type':'text/plain'});return res.end('ok');}return render(res);});
-server.listen(port,'127.0.0.1',()=>{console.log(`GenZ station agent: ${stationId} (${agentId})`);console.log(`QR display: http://127.0.0.1:${port}/`);heartbeat();setInterval(heartbeat,15000);if(process.platform==='win32')exec(`start "" "http://127.0.0.1:${port}/"`);else if(process.platform==='darwin')exec(`open "http://127.0.0.1:${port}/"`);else exec(`xdg-open "http://127.0.0.1:${port}/"`);});
+server.listen(port,'127.0.0.1',()=>{console.log(`GenZ station agent: ${stationId} (${agentId})`);console.log(`QR display: http://127.0.0.1:${port}/`);heartbeat();pollCommands();setInterval(heartbeat,15000);setInterval(pollCommands,3000);setInterval(enforceLease,1000);if(process.platform==='win32')exec(`start "" "http://127.0.0.1:${port}/"`);else if(process.platform==='darwin')exec(`open "http://127.0.0.1:${port}/"`);else exec(`xdg-open "http://127.0.0.1:${port}/"`);});
 process.on('SIGINT',()=>server.close(()=>process.exit(0)));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
