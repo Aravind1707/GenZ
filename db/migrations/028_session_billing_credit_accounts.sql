@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS customer_credit_payments (
   created_by VARCHAR(64) NULL,
   created_at DATETIME(3) NOT NULL,
   CONSTRAINT fk_credit_payment_customer FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  CONSTRAINT fk_credit_payment_staff FOREIGN KEY(approved_by) REFERENCES staff_users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_credit_payment_staff FOREIGN KEY(created_by) REFERENCES staff_users(id) ON DELETE SET NULL,
   INDEX idx_credit_payment_customer_created(customer_id,created_at)
 ) ENGINE=InnoDB;
 
