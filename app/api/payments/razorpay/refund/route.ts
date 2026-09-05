@@ -1,0 +1,8 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {COOKIE,requireStaff,audit} from '../../../../../lib/staff-auth';
+import {createRazorpayRefund,fetchRazorpayRefund} from '../../../../../lib/razorpay';
+import {pool} from '../../../../../lib/mysql';
+const auth=async(p:string)=>requireStaff((await cookies()).get(COOKIE)?.value,p);
+export async function GET(req:Request){try{await auth('finance:read');const id=new URL(req.url).searchParams.get('refundId')||'';const refund=await fetchRazorpayRefund(id);return NextResponse.json({ok:true,refund});}catch(e){const m=e instanceof Error?e.message:'Unable to fetch refund';return NextResponse.json({ok:false,error:m},{status:m==='STAFF_FORBIDDEN'?403:400})}}
+export async function POST(req:Request){try{const staff=await auth('finance:write');const b=await req.json();const paymentId=String(b.paymentId||'');const amount=Number(b.amountRupees);const refund=await createRazorpayRefund(paymentId,amount,typeof b.receipt==='string'?b.receipt:undefined);await pool.execute('UPDATE session_payment_refunds SET provider=\'RAZORPAY\',external_reference=?,provider_status=? WHERE provider=\'RAZORPAY\' AND external_reference IS NULL AND amount=? ORDER BY created_at DESC LIMIT 1',[refund.id,['processed','completed'].includes(refund.status)?'SUCCEEDED':'PENDING',amount]);await audit(staff.id,'RAZORPAY_REFUND_REQUESTED','razorpay_refund',refund.id,{paymentId,amountRupees:amount,status:refund.status});return NextResponse.json({ok:true,refund});}catch(e){const m=e instanceof Error?e.message:'Refund request failed';return NextResponse.json({ok:false,error:m},{status:m==='STAFF_FORBIDDEN'?403:400})}}
