@@ -11,90 +11,63 @@
 GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 MOZA stations, plus food, memberships, bookings, gaming sessions, participant billing, groups, payments, staff, finance and future hardware control.
 
 - Customer identity = mobile + OTP.
-- OTP is server-generated, hashed, short-lived, attempt/rate limited.
-- Customer sessions use hashed tokens/HttpOnly cookies and a 30-day absolute/idle window.
-- Membership is participant-level and active only when `active=TRUE` and `expires_at >= CURDATE()`.
 - Never trust client membership, prices, totals, payment state, station ownership or staff role.
-- Active member UI shows only member price; regular price is hidden.
-- Non-member UI shows regular price and member savings.
-- Food payment choices are Pay Now or Pay at Counter.
-- Wallet/GenZ Pay stored balance is intentionally removed/deferred.
-- Manager may add food manually to an active session as a counter-payable order.
-- Gaming/session bills are settled at the counter unless an approved customer is explicitly posted to monthly credit.
-- A bill can contain multiple payment entries and supports partial/split Cash, UPI and Card/POS settlement.
-- A failed payment never closes a bill.
-- An equipment session is not fully released for reuse until its settlement is paid or legitimately moved to approved monthly credit.
-- Trusted monthly billing is an approved credit account, not a wallet. It has a configurable credit limit and separate charge/payment ledger.
-- QR identifies a station only and never grants authorization; live station challenges bind a verified customer to an active session.
-- Preserve customer -> participant -> session -> station -> order -> payment/credit attribution.
-- Every rupee needs an auditable transaction/ledger origin.
-- Inventory reservations are created atomically with food orders; stock is consumed only when a paid order is delivered.
+- Active member UI shows only member price; non-members see normal and member pricing.
+- Food payment choices are Pay Now or Pay at Counter; wallet balance remains deferred.
+- Gaming/session bills settle at counter unless explicitly posted to approved monthly credit.
+- Equipment remains unavailable until settlement is paid or legitimately moved to approved credit.
+- Every rupee needs an auditable ledger origin.
+- Inventory reservation is atomic; stock is consumed only when a paid order is delivered.
 
 ## Architecture/CI
 
 - Next.js 15.5.24, React 19.2.0, TypeScript, MySQL, mysql2.
 - Lazy MySQL pool keeps builds independent of a live database.
-- GitHub Actions runs `npm install` and `npm run build`.
-- Core café operation is LAN-first; MSG91/Razorpay are integrations.
-- Static IP is a stable public network entry point, not authentication.
-- Production target is Windows admin-PC/server + local MySQL + Next.js on localhost + HTTPS reverse proxy + router firewall/NAT.
-- Owner-only access to private café infrastructure is via VPN; MySQL/RDP/SSH/router/CCTV/station-agent ports are not public.
-- Optional POS/ECR integration is provider-neutral and disabled by default until the exact terminal/provider API is verified.
-
-## Staff roles
-
-- `OWNER`: full access.
-- `MANAGER`: operational access including sessions, orders, customers, members, inventory, finance, payments and credit accounts.
-- Legacy `CASHIER`, `KITCHEN` and `FLOOR` roles are migrated to `MANAGER` by migration 027 and the database enum is restricted to OWNER/MANAGER.
+- GitHub Actions runs migration-integrity tests and `npm run build`.
+- Static IP is a public endpoint behind HTTPS/firewall, not authentication.
+- Private infrastructure uses VPN; MySQL/RDP/SSH/router/CCTV/station-agent ports are not public.
+- POS/ECR remains provider-neutral and disabled until the exact terminal/provider API is verified.
 
 ## Completed foundations
 
-Customer OTP/security, membership recognition and server-authoritative pricing; food ordering and counter-payable orders; bookings/check-in/no-show backend; gaming sessions, participants and server-computed billing; session extension and station QR attribution; authenticated realtime customer/KDS foundations; session settlement with Cash/UPI/Card/Other, partial/split payments and idempotency; station lock-until-settlement lifecycle; approved monthly credit accounts, limits, statements and repayments; OWNER/MANAGER roles; inventory reservation/movement foundation; finance ledger foundation; static-IP/Windows deployment foundation with HTTPS reverse proxy and firewall guidance; combined staff session receipt foundation; transactional session-payment refunds; daily close tender/cash-count reporting.
+Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, and daily-close cash/tender reporting.
 
-## New hardening/build foundations
+## Current build additions
 
-- `lib/station-agent-protocol.ts` defines the provider-neutral station-agent state machine, heartbeat and command contract.
-- `lib/station-agent-lease.ts` provides fail-closed lease validation and remaining-lease calculation.
-- `lib/station-agent-heartbeat.ts` persists authenticated station-agent heartbeat telemetry; migration 031 and `/api/station-agent/heartbeat` provide the server path.
-- `db/migrations/032_station_agent_commands.sql` and `lib/station-agent-commands.ts` provide an idempotent durable command queue with claim/acknowledge/expiry semantics.
-- `/api/station-agent/commands` authenticates agents with per-station secrets and staff command requests using the existing staff authorization model.
-- `scripts/station-agent.mjs` polls commands, acknowledges them, enforces session lease expiry locally, and supports Windows workstation lock/shutdown commands. Vendor-specific launch/unlock adapters remain intentionally unimplemented until hardware requirements are verified.
-- `lib/billing-reconciliation.ts` provides server-side bill/payment/credit reconciliation invariants and is ES-target compatible.
-- `lib/refund-policy.ts` provides a pure refund eligibility/remaining-balance policy boundary.
-- `db/migrations/033_session_payment_refunds.sql` and `034_session_payment_refund_idempotency.sql` add immutable session-payment refund records with idempotency keys.
-- `lib/session-refunds.ts` executes partial session-payment refunds transactionally, caps refunds at each captured settlement's remaining balance, creates finance reversal entries, and reopens/blocks the session when a refund creates an outstanding balance.
-- `/api/session-refunds` provides staff-only refund listing and execution with `payments:read`/`payments:write` authorization and audit logging.
-- `lib/receipt.ts`, `/api/sessions/receipt` and `/receipts` expose gaming participants, food orders/items, deposits/group allocations, billing adjustments, monthly credit, session payment history and payment refunds. The receipt page can initiate a partial refund for a captured session payment.
-- `db/migrations/035_daily_cash_counts.sql` persists physical cash counts per business date.
-- `lib/daily-close-report.ts`, `/api/daily-close` and `/daily-close` provide tender/refund/expense reconciliation, expected cash-drawer movement, earned-revenue timing differences and counted-cash variance.
-- `app/layout.tsx` exposes receipts and daily close in staff navigation.
-- `docs/STATION_AGENT_PROTOCOL.md`, `docs/REFUND_RECONCILIATION.md`, `docs/BACKUP_RESTORE.md`, `docs/PRODUCTION_CHECKLIST.md` and `docs/BUILD_ROADMAP.md` document the operational contracts and remaining build order.
+- `db/migrations/036_inventory_recipes_batches_stocktakes.sql` adds inventory materials, menu-item BOM/recipes, fractional stock, receiving batches/unit cost, stocktakes, wastage reasons and material movement history.
+- `db/migrations/037_inventory_reservation_decimal_qty.sql` permits fractional recipe quantities in reservations.
+- `lib/inventory-materials.ts` implements material lifecycle, recipe management, costed receiving, valuation, stocktakes and reason-coded waste.
+- `lib/inventory.ts` now uses configured recipes for reservation/consumption/release while retaining legacy direct-menu inventory compatibility.
+- `/api/inventory/materials` and `/inventory/materials` expose the material/receiving/recipe workspace.
+- `db/migrations/038_finance_reconciliation.sql`, `lib/finance-reconciliation.ts`, `/api/finance/reconciliation` and `/reconciliation` add auditable external payment matching with amount exceptions.
+- `/admin` plus `/api/admin/catalog` and `/api/admin/staff` provide OWNER-only catalogue, gaming-rate, station, member-rule and staff lifecycle controls. Staff password changes/session revocation are handled server-side.
+- `db/migrations/039_realtime_event_log.sql` persists realtime events for replay.
+- `lib/realtime.ts` and `/api/events` now support reconnect replay using a timestamp/event cursor while retaining live SSE delivery.
+- Production CSP now removes `unsafe-eval` and enables HSTS in production.
+- `scripts/validate-migrations.mjs` and `npm test` validate numbered migration/version integrity; CI runs this before the production build.
 
-## Remaining project modules
+## Remaining project modules — build order
 
-### Station/hardware
-Complete physical PC enforcement around the authenticated command path: a verified Windows kiosk/session-launch implementation, safe unlock/start semantics, WOL/graceful shutdown, and adapters for console/VR/MOZA hardware. Exact vendor APIs must be verified before implementation.
+### 1. Payment/reconciliation completion
+Complete provider-aware external refund references, automated import/matching where provider APIs are available, persistent daily-close approval, and cross-source reconciliation for food, gaming, booking deposits, credit repayments and provider records.
 
-### Receipts/refunds/reconciliation
-Receipt and transactional session-payment refund foundations are implemented. Continue with cross-source payment reconciliation, provider-aware external refund references and refund/void policy expansion where required.
+### 2. Inventory completion
+Complete order-level FIFO batch consumption/COGS accounting, customer-facing out-of-stock behavior, full stocktake editing UI and richer supplier/expiry workflows.
 
-### Finance/daily close
-Daily close reporting and physical cash-count variance are implemented. Continue with a persistent close/approval workflow and cross-source reconciliation of food, gaming, booking deposits, credit repayments and external payment provider records.
+### 3. Admin completion
+Finish full CRUD forms for every gaming/menu/station/member rule field, effective-date pricing, station overrides, customer/member lifecycle search, and richer staff management UX.
 
-### Inventory
-Complete menu-to-stock mapping, recipe/BOM, COGS, receiving batches/cost, stocktake, wastage reasons and customer out-of-stock UX.
+### 4. Station/hardware enforcement
+Complete verified Windows kiosk/session-launch behavior, safe unlock/start, WOL/graceful shutdown and adapters for consoles/VR/MOZA. Exact vendor APIs must be verified before implementation.
 
-### Admin
-Complete menu/gaming/station CRUD, pricing/member rules, images/specs, station overrides, effective dates, membership/customer lifecycle and staff CRUD/password reset/session revocation.
+### 5. Bookings/KDS
+Polish customer/member lookup, calendar/timeline, modifiers, deposits, cancellation/refund policy, payment retry and out-of-stock UX.
 
-### Bookings/KDS
-Polish customer/member lookup, deposits, cancellation/refund policy, calendar/timeline, modifiers, payment retry, refund/void policy and out-of-stock UX.
+### 6. Realtime completion
+Add event retention/pruning, stronger cursor semantics and multi-process/shared-broker delivery if deployment uses more than one Next.js process.
 
-### Realtime
-Add replay/reconnect cursor semantics, complete mutation coverage and multi-process guarantees.
-
-### Testing/security/deployment
-Add automated MySQL concurrency/security tests, final request-ID/error hardening, bounded shared rate limiting, CSP/HSTS production policy, migration duplicate-version checks, scheduled/off-host backups and a verified clean restore. Static-IP/DNS/router/HTTPS acceptance must be run at the actual café.
+### 7. Testing/security/deployment
+Add MySQL integration/concurrency/security tests, request-ID/error hardening, shared distributed rate limiting, production CSP/HSTS acceptance, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
 
 ## Definition of 100%
 
@@ -117,16 +90,13 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 ## Development log — 2026-09-05
 
 - Restricted intended staff model to OWNER and MANAGER.
-- Added session customer linkage and trusted monthly billing.
-- Added manager manual food-to-session ordering.
-- Added final session settlement with partial/split settlement and station locking.
-- Added trusted monthly credit accounts and repayments.
-- Added provider-neutral POS/ECR boundary and static-IP deployment foundation.
-- Added Windows production installer, boot-start runner, HTTPS reverse proxy, firewall setup and deployment instructions.
-- Added station-agent protocol/lease contracts, billing/refund/daily-close invariants, production checklist, backup/restore runbook and prioritized build roadmap.
-- Added persistent authenticated station heartbeat telemetry and durable station command queue.
-- Added station-agent command polling, acknowledgement, lease-expiry fail-closed locking, and safe Windows lock/shutdown hooks.
-- Fixed CI build failure caused by ES-target-incompatible BigInt literals in billing reconciliation and corrected mysql2 command acknowledgement result typing.
-- Added combined session receipt service, staff API and receipt screen.
-- Added immutable partial session-payment refunds, refund idempotency, finance reversal entries, settlement-balance integration, receipt refund visibility and staff refund controls.
-- Added daily close tender/refund/expense report, persistent counted-cash variance and staff daily-close screen.
+- Added trusted monthly billing and final session settlement with station locking.
+- Added provider-neutral POS/ECR boundary and Windows/static-IP deployment foundation.
+- Added station-agent protocol, lease, heartbeat, durable command queue and Windows lock/shutdown hooks.
+- Added combined session receipts and immutable partial session-payment refunds with finance reversal/audit records.
+- Added daily close tender/refund/expense reporting and persisted physical cash variance.
+- Added inventory recipe/material, fractional reservation, receiving-batch, cost, stocktake and waste foundations.
+- Added external finance reconciliation records/API/UI.
+- Added OWNER administration and staff lifecycle API/UI.
+- Added persisted realtime event replay and reconnect-aware SSE.
+- Hardened production CSP/HSTS and added migration integrity tests to CI.
