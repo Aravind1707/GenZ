@@ -10,18 +10,18 @@ export function reconcileTotals(input: {
   capturedPayments: bigint;
   creditPosted?: bigint;
 }): ReconciliationTotals {
-  const creditPosted = input.creditPosted ?? 0n;
+  const creditPosted = input.creditPosted ?? BigInt(0);
   const applied = input.capturedPayments + creditPosted;
   return {
     billTotal: input.billTotal,
     capturedPayments: input.capturedPayments,
     creditPosted,
-    outstanding: input.billTotal > applied ? input.billTotal - applied : 0n,
+    outstanding: input.billTotal > applied ? input.billTotal - applied : BigInt(0),
   };
 }
 
 export function assertReconciliationSafe(input: ReconciliationTotals): void {
-  if (input.billTotal < 0n || input.capturedPayments < 0n || input.creditPosted < 0n) {
+  if (input.billTotal < BigInt(0) || input.capturedPayments < BigInt(0) || input.creditPosted < BigInt(0)) {
     throw new Error('Reconciliation totals cannot be negative');
   }
   if (input.capturedPayments + input.creditPosted > input.billTotal) {
