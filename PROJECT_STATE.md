@@ -55,7 +55,11 @@ Customer OTP/security, membership recognition and server-authoritative pricing; 
 
 - `lib/station-agent-protocol.ts` defines the provider-neutral station-agent state machine, heartbeat and command contract.
 - `lib/station-agent-lease.ts` provides fail-closed lease validation and remaining-lease calculation.
-- `lib/billing-reconciliation.ts` provides server-side bill/payment/credit reconciliation invariants.
+- `lib/station-agent-heartbeat.ts` persists authenticated station-agent heartbeat telemetry; migration 031 and `/api/station-agent/heartbeat` provide the server path.
+- `db/migrations/032_station_agent_commands.sql` and `lib/station-agent-commands.ts` provide an idempotent durable command queue with claim/acknowledge/expiry semantics.
+- `/api/station-agent/commands` authenticates agents with per-station secrets and staff command requests with the existing staff authorization model.
+- `scripts/station-agent.mjs` now polls commands, acknowledges them, enforces session lease expiry locally, and supports Windows workstation lock/shutdown commands. Vendor-specific launch/unlock adapters remain intentionally unimplemented until hardware requirements are verified.
+- `lib/billing-reconciliation.ts` provides server-side bill/payment/credit reconciliation invariants and is ES-target compatible.
 - `lib/refund-policy.ts` provides a pure refund eligibility/remaining-balance policy boundary; actual execution must remain transactional in the payment/finance layer.
 - `lib/daily-close.ts` provides tender-net and ledger-vs-tender balancing invariants.
 - `docs/STATION_AGENT_PROTOCOL.md`, `docs/REFUND_RECONCILIATION.md`, `docs/BACKUP_RESTORE.md`, `docs/PRODUCTION_CHECKLIST.md` and `docs/BUILD_ROADMAP.md` document the operational contracts and remaining build order.
@@ -63,7 +67,7 @@ Customer OTP/security, membership recognition and server-authoritative pricing; 
 ## Remaining project modules
 
 ### Station/hardware
-Build the authenticated station-agent API and persistence/heartbeat path, PC lock/unlock implementation, WOL/graceful shutdown, and adapters for console/VR/MOZA hardware. Exact vendor APIs must be verified before implementation.
+Complete physical PC enforcement around the authenticated command path: a verified Windows kiosk/session-launch implementation, safe unlock/start semantics, WOL/graceful shutdown, and adapters for console/VR/MOZA hardware. Exact vendor APIs must be verified before implementation.
 
 ### Receipts/refunds/reconciliation
 Build unified food/gaming/group/combined receipts, payment IDs/methods, partial refunds, reversals, voids and a transactional reconciliation screen.
@@ -114,3 +118,6 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added provider-neutral POS/ECR boundary and static-IP deployment foundation.
 - Added Windows production installer, boot-start runner, HTTPS reverse proxy, firewall setup and deployment instructions.
 - Added station-agent protocol/lease contracts, billing/refund/daily-close invariants, production checklist, backup/restore runbook and prioritized build roadmap.
+- Added persistent authenticated station heartbeat telemetry and durable station command queue.
+- Added station-agent command polling, acknowledgement, lease-expiry fail-closed locking, and safe Windows lock/shutdown hooks.
+- Fixed CI build failure caused by ES-target-incompatible BigInt literals in billing reconciliation.
