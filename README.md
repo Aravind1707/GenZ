@@ -22,15 +22,16 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Provider-neutral POS/ECR boundary disabled until the exact provider is verified.
 - Static-IP/Windows deployment foundation with HTTPS/firewall/VPN guidance.
 - Combined staff receipts and immutable transactional session-payment refunds.
-- Daily-close tender/refund/expense reporting and physical cash variance.
+- Daily-close tender/refund/expense reporting, physical cash variance and persistent OWNER approval.
 - OWNER administration for catalogue, rates, stations, member rules and staff lifecycle.
-- External finance reconciliation matching with amount exceptions.
+- External finance reconciliation matching for incoming and outgoing ledger records with amount exceptions.
+- Provider-aware session refund references/status fields.
 - Persisted realtime event replay/reconnect cursor foundation.
 - Production CSP/HSTS hardening and migration-integrity tests in CI.
 
 ## Database migrations
 
-Current feature migrations include `014`, `017`–`028`, `031`–`039`; see `db/migrations/` for the canonical numbered SQL. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers.
+Current feature migrations include `014`, `017`–`028`, `031`–`042`; see `db/migrations/` for the canonical numbered SQL. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers.
 
 ## Security
 
@@ -49,7 +50,7 @@ npm run station:agent
 
 ## Remaining build order
 
-1. **Payment/finance:** provider-aware external refunds, automated provider matching/import, persistent daily-close approval and complete cross-source reconciliation.
+1. **Payment/finance:** core ledger reconciliation and daily-close approval are implemented; remaining work is official provider API import/webhook matching and exception-resolution tooling.
 2. **Inventory:** FIFO batch consumption, order-level COGS ledger/reporting, customer out-of-stock UX and richer stocktake/supplier/expiry UI.
 3. **Admin:** complete CRUD/effective-date pricing/station overrides/customer lifecycle and richer staff UX.
 4. **Station hardware:** verified Windows kiosk/session launch, safe unlock/start, WOL/shutdown and console/VR/MOZA adapters only after exact hardware APIs are verified.
