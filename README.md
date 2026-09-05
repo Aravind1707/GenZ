@@ -8,130 +8,53 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 
 - MySQL source of truth with incremental migrations and CI build validation.
 - Customer mobile + OTP authentication with hashed, rate-limited challenges and hashed customer sessions.
-- Customer session-management screen with current-device sign-out and sign-out-other-devices controls.
 - Server-authoritative membership recognition and dynamic member/non-member pricing.
 - Gaming price list and food ordering with **Pay Now** / **Pay at Counter** only.
 - Razorpay order/signature/webhook foundation and food payment idempotency.
-- Transactional food inventory reservation, release and consumption.
-- Recipe/BOM inventory foundation with material stock, receiving batches, unit costs, stocktakes, wastage reasons, valuation and menu-to-material reservation.
-- Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent, with member pricing rates snapshotted at participant creation.
-- Active/paused/ended sessions, participant-level pause-aware billing, server-side rate snapshots and session extensions.
-- Individual session final billing with gaming + unpaid food, counter settlement, partial/split Cash/UPI/Card payments and settlement-before-equipment-release.
-- Manager can add food manually to an active session as a counter-payable order.
-- Approved regular customers can use a controlled monthly credit account with a configurable limit, session charges, partial repayments and statements.
-- Multi-session group billing with equal/custom/by-session/by-food allocation.
-- Booking creation, conflicts, check-in/no-show, booking-to-session handoff and deposit collection/application/refund lifecycle.
-- Booking deposits are treated as advances in finance reporting rather than earned revenue.
-- Staff authentication/RBAC, audit logging, finance ledger and LAN SSE realtime foundation.
-- Staff model is OWNER + MANAGER; legacy specialist roles are migrated to MANAGER.
-- Optional provider-neutral POS/ECR boundary for future dynamic UPI QR/card terminal integration; disabled until the exact POS provider/model is verified.
-- Static-IP/public-origin configuration and owner remote-access/VPN deployment guidance.
-- Admin screens for sessions, settlements, **combined session receipts**, bookings, food orders, kitchen, finance, members, stations and inventory.
-- Transactional session-payment refunds with partial-refund limits, idempotency, mandatory reasons, finance reversal entries and audit logging.
-- Daily close screen with tender/refund/expense breakdown, earned-revenue timing differences, expected cash movement and persisted physical-cash variance.
-
-## Accounting invariants
-
-Every payment is recorded transactionally and attributed to its source. Session settlement cannot exceed the server-calculated outstanding balance, cannot be captured against an open billing group, and is idempotent when a client supplies an idempotency key. Partial/split counter payments are recorded as separate entries. An ended session keeps its equipment unavailable until its bill is fully settled or an approved monthly-credit posting succeeds. Monthly credit is an audited customer receivable, not a wallet. Booking deposits are tracked separately, can be applied against the combined final session tab, and any unused remainder must be refunded before a billing group can close.
-
-A session refund never edits the original payment. It creates a separate captured refund linked to the original settlement, capped by that payment's remaining refundable balance. Refunds reduce the session's net paid amount and can reopen an outstanding balance; staff must settle that balance or use the approved credit workflow. A settlement with an existing refund cannot be voided, preventing contradictory financial reversals.
-
-The staff receipt view combines server-calculated gaming charges, itemized food orders, deposit/group allocations, billing adjustments, monthly credit, session payment history and payment refunds. Receipt data is read-only except for the explicit staff refund action, which creates its own auditable financial records.
-
-Daily close separates tender collection from earned revenue so booking-deposit advances and monthly-credit timing are visible instead of being silently mixed into sales. Physical cash is counted separately and compared with expected cash-drawer movement; a variance is never hidden by changing the ledger.
-
-## Station security
-
-Permanent labels such as `PC-01`, `PS5-01` and `MOZA-01` are identifiers, not credentials. A trusted station agent holds a station-specific secret and requests a 32-byte, 60-second challenge. The customer must authenticate with OTP and submit the current challenge; the server locks and consumes it before creating the participant binding. The participant receives a server-side snapshot of the applicable regular/member rates at join time. The agent secret must never be shipped to browser JavaScript.
-
-## Static IP and remote owner access
-
-The ISP static IP should be used as a stable public endpoint behind a firewall/reverse proxy. Point the café domain DNS at the static IP and expose only HTTPS to the public application. For owner-only access to private café infrastructure, use a VPN rather than exposing MySQL, RDP, SSH, router administration or CCTV ports. See `docs/STATIC_IP_AND_POS.md` for the deployment model and optional POS flow.
+- Transactional food inventory reservation, release and consumption, plus recipe/material, costed receiving, stocktake and waste foundations.
+- Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent.
+- Active/paused/ended sessions, participant billing, rate snapshots and extensions.
+- Combined gaming+food settlement with partial/split payments and settlement-before-equipment-release.
+- Approved monthly credit accounts and statements; no wallet balance.
+- Booking creation, conflicts, check-in/no-show, handoff and deposit lifecycle.
+- Staff authentication/RBAC, audit logging, finance ledger and LAN SSE realtime.
+- OWNER + MANAGER staff model.
+- Provider-neutral POS/ECR boundary disabled until the exact provider is verified.
+- Static-IP/Windows deployment foundation with HTTPS/firewall/VPN guidance.
+- Combined staff receipts and immutable transactional session-payment refunds.
+- Daily-close tender/refund/expense reporting and physical cash variance.
+- OWNER administration for catalogue, rates, stations, member rules and staff lifecycle.
+- External finance reconciliation matching with amount exceptions.
+- Persisted realtime event replay/reconnect cursor foundation.
+- Production CSP/HSTS hardening and migration-integrity tests in CI.
 
 ## Database migrations
 
-The canonical schema is followed by incremental migrations. Current feature migrations include:
-
-- `014_group_settlements.sql`
-- `017_inventory.sql`
-- `018_remove_wallet.sql`
-- `019_membership_transactions.sql`
-- `020_booking_deposit_payments.sql`
-- `021_security_idempotency.sql`
-- `022_idempotency_payload_fingerprint.sql`
-- `023_booking_deposit_allocations.sql`
-- `024_session_settlements.sql`
-- `025_station_challenges.sql`
-- `026_finance_booking_deposit_cleanup.sql`
-- `027_staff_owner_manager_roles.sql`
-- `028_session_billing_credit_accounts.sql`
-- `031_station_agent_heartbeats.sql`
-- `032_station_agent_commands.sql`
-- `033_session_payment_refunds.sql`
-- `034_session_payment_refund_idempotency.sql`
-- `035_daily_cash_counts.sql`
-- `036_inventory_recipes_batches_stocktakes.sql`
-- `037_inventory_reservation_decimal_qty.sql`
-
-Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
+Current feature migrations include `014`, `017`–`028`, `031`–`039`; see `db/migrations/` for the canonical numbered SQL. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers.
 
 ## Security
 
-Staff sessions use hashed 256-bit tokens with a 12-hour absolute lifetime and 45-minute inactivity timeout. Customer sessions use hashed 256-bit tokens with a 30-day absolute lifetime and 12-hour inactivity timeout. Browser-supplied membership, prices, payment states, station ownership and totals are never authoritative. Forwarded client IP headers are trusted only when `GENZ_TRUST_PROXY=true`.
-
-Never expose MySQL credentials, Razorpay secrets, MSG91 credentials or station-agent secrets to the browser.
-
-## Environment
-
-```env
-GENZ_DB_HOST=127.0.0.1
-GENZ_DB_PORT=3306
-GENZ_DB_USER=genz
-GENZ_DB_PASSWORD=change-this
-GENZ_DB_NAME=genz_os
-
-GENZ_PUBLIC_BASE_URL=https://order.example.com
-GENZ_OWNER_REMOTE_ACCESS_ENABLED=false
-GENZ_OWNER_REMOTE_ACCESS_MODE=VPN
-
-GENZ_RAZORPAY_KEY_ID=...
-GENZ_RAZORPAY_KEY_SECRET=...
-GENZ_RAZORPAY_WEBHOOK_SECRET=...
-
-GENZ_POS_PROVIDER=NONE
-GENZ_POS_INTEGRATION_ENABLED=false
-GENZ_POS_DYNAMIC_UPI_QR_ENABLED=false
-GENZ_POS_CARD_ENABLED=false
-GENZ_POS_AUTO_CONFIRM_ENABLED=false
-
-# JSON map of station IDs to high-entropy secrets held only by trusted station agents.
-GENZ_STATION_AGENT_SECRETS_JSON={"PC-01":"replace-with-at-least-32-random-characters"}
-GENZ_TRUST_PROXY=false
-```
+Staff and customer sessions use hashed tokens with expiry/inactivity limits. Browser-supplied membership, prices, payment states, station ownership and totals are never authoritative. Forwarded client IP headers are trusted only when `GENZ_TRUST_PROXY=true`. Production responses include restrictive CSP and HSTS. Never expose MySQL, payment, messaging or station-agent secrets to browsers.
 
 ## Development
 
 ```bash
 npm install
-npm run dev
+npm test
 npm run build
 npm start
 npm run db:migrate
 npm run station:agent
 ```
 
-CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
+## Remaining build order
 
-## Roadmap to production
+1. **Payment/finance:** provider-aware external refunds, automated provider matching/import, persistent daily-close approval and complete cross-source reconciliation.
+2. **Inventory:** FIFO batch consumption, order-level COGS ledger/reporting, customer out-of-stock UX and richer stocktake/supplier/expiry UI.
+3. **Admin:** complete CRUD/effective-date pricing/station overrides/customer lifecycle and richer staff UX.
+4. **Station hardware:** verified Windows kiosk/session launch, safe unlock/start, WOL/shutdown and console/VR/MOZA adapters only after exact hardware APIs are verified.
+5. **Bookings/KDS:** calendar/timeline, modifiers, lookup, deposit/refund polish, retry and out-of-stock UX.
+6. **Realtime:** retention/pruning and shared broker for multi-process deployment.
+7. **Final QA/deployment:** MySQL integration/concurrency/security tests, request-ID/error hardening, distributed rate limiting, off-host backups, clean restore and actual café LAN/static-IP/HTTPS acceptance.
 
-1. Automated integration/security tests against MySQL.
-2. Customer/KDS realtime subscriptions with replay/reconnect semantics.
-3. ~~Menu recipes/BOM, stocktake, COGS and receiving costs~~ — recipe/material, stocktake, receiving-batch cost and valuation foundations are implemented; continue with order-level FIFO COGS reporting.
-4. Configuration screens for menu, gaming rates, station metadata and images.
-5. Customer/member search and management polish, including monthly credit UI.
-6. ~~Combined receipts foundation~~ — staff combined session receipt and transactional session-payment refunds are implemented; continue with cross-source payment reconciliation.
-7. ~~Daily close foundation~~ — tender/refund/expense report and physical cash-count variance are implemented; continue with persistent close approval and cross-source reconciliation.
-8. Station-agent heartbeat and hardware-control abstraction.
-9. Implement and verify the exact POS provider adapter for dynamic UPI QR/card terminal payments.
-10. Operational health monitoring and verified backup/restore.
-11. Final admin-PC/LAN deployment validation.
+POS hardware and physical station behavior remain intentionally provider-specific gates rather than simulated implementations.
