@@ -10,7 +10,83 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  build:
+  unit-build:
+    name: Unit + production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm test
+      - name: Coverage report
+        run: mkdir -p coverage && npm run test:coverage > coverage/unit-coverage.txt 2>&1
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-unit-coverage
+          path: coverage/unit-coverage.txt
+          retention-days: 14
+      - run: npm run build
+
+  mysql-integration:
+    name: MySQL integration + concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: genz_os
+          MYSQL_USER: genz_app
+          MYSQL_PASSWORD: genz_ci_password
+          MYSQL_ROOT_PASSWORD: root_ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ugenZ_app -pgenz_ci_password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      GENZ_DB_HOST: 127.0.0.1
+      GENZ_DB_PORT: 3306
+      GENZ_DB_NAME: genz_os
+      GENZ_DB_USER: genz_app
+      GENZ_DB_PASSWORD: genz_ci_password
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm run db:migrate
+      - run: npm run db:migrate
+      - run: npm run test:integration
+
+  docker:
+    name: Docker build + Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        env:
+          GENZ_DB_PASSWORD: genz_ci_password
+          MYSQL_ROOT_PASSWORD: root_ci_password
+          GENZ_STAFF_INITIAL_PASSWORD: ci_initial_password
+        run: docker compose config --quiet
+      - name: Build production image
+        run: docker build --tag genz-os:ci .
+
+  security:
+    name: Dependency + security checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -18,6 +94,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - run: npm install
-      - run: npm test
-      - run: npm run build
+      - name: Dependency audit
+        run: |
+          mkdir -p security
+          npm audit --json > security/npm-audit.json || true
+          npm audit --audit-level=critical
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-security-audit
+          path: security/npm-audit.json
+          retention-days: 14
+      - name: Source security contract checks
+        run: npm run test:qa
