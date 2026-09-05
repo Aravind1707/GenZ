@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {PoolConnection,RowDataPacket} from 'mysql2/promise';
 import {transaction} from './mysql';
 import {calculateSessionBilling} from './gaming-billing';
+import {assertDailyCloseOpen} from './daily-close-lock';
 
 export type SettlementMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 export type SettlementSource={sourceType:'GAMING_SESSION'|'FOOD_ORDER_ITEM';sourceId:string;sessionId:string;orderId?:string;label:string;outstanding:number};
@@ -35,6 +36,7 @@ async function sourcesFor(c:PoolConnection,groupId:string):Promise<SettlementSou
 export async function getGroupSettlement(groupId:string){return transaction(async c=>{const [g]=await c.query<RowDataPacket[]>('SELECT id,status FROM session_groups WHERE id=? LIMIT 1',[groupId]);if(!g[0])throw Error('Group not found');const sources=await sourcesFor(c,groupId);const[rows]=await c.query<RowDataPacket[]>('SELECT id,method,amount,created_at FROM group_settlements WHERE group_id=? AND status=\'CAPTURED\' ORDER BY created_at DESC',[groupId]);return{groupId,totalOutstanding:sources.reduce((n,s)=>n+s.outstanding,0),sources,settlements:rows.map(r=>({id:String(r.id),method:r.method as SettlementMethod,amount:Number(r.amount),createdAt:new Date(r.created_at).toISOString()}))};});}
 
 export async function settleGroup(input:{groupId:string;method:SettlementMethod;staffId:string;payers:Array<{label:string;customerId?:string;amount:number}>;allocations?:Array<{payerIndex:number;sourceType:'GAMING_SESSION'|'FOOD_ORDER_ITEM';sourceId:string;amount:number}>}){return transaction(async c=>{
+ await assertDailyCloseOpen(c);
  const[groups]=await c.query<RowDataPacket[]>('SELECT id,status FROM session_groups WHERE id=? FOR UPDATE',[input.groupId]);if(!groups[0])throw Error('Group not found');if(groups[0].status!=='OPEN')throw Error('Group is closed');
  const sources=await sourcesFor(c,input.groupId);const sourceMap=new Map(sources.map(s=>[`${s.sourceType}:${s.sourceId}`,s]));
  const payers=(input.payers||[]).map(p=>({label:String(p.label||'Payer').trim().slice(0,120)||'Payer',customerId:p.customerId?String(p.customerId):undefined,amount:money(Number(p.amount))}));
