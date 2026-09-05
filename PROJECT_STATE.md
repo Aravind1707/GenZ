@@ -30,26 +30,29 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 
 ## Completed foundations
 
-Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, and daily-close cash/tender reporting.
+Customer OTP/security, membership/pricing, food ordering, bookings/check-in/no-show, gaming sessions and billing, station QR/challenge attribution, authenticated realtime foundation, session settlement/partial payments/idempotency, station lock-until-settlement, monthly credit, OWNER/MANAGER RBAC, inventory reservation/movement, finance ledger, static-IP/Windows deployment foundation, combined receipts, transactional refunds, daily-close cash/tender reporting, external reconciliation, OWNER administration and persisted realtime replay foundation.
 
 ## Current build additions
 
-- `db/migrations/036_inventory_recipes_batches_stocktakes.sql` adds inventory materials, menu-item BOM/recipes, fractional stock, receiving batches/unit cost, stocktakes, wastage reasons and material movement history.
-- `db/migrations/037_inventory_reservation_decimal_qty.sql` permits fractional recipe quantities in reservations.
-- `lib/inventory-materials.ts` implements material lifecycle, recipe management, costed receiving, valuation, stocktakes and reason-coded waste.
-- `lib/inventory.ts` now uses configured recipes for reservation/consumption/release while retaining legacy direct-menu inventory compatibility.
-- `/api/inventory/materials` and `/inventory/materials` expose the material/receiving/recipe workspace.
-- `db/migrations/038_finance_reconciliation.sql`, `lib/finance-reconciliation.ts`, `/api/finance/reconciliation` and `/reconciliation` add auditable external payment matching with amount exceptions.
-- `/admin` plus `/api/admin/catalog` and `/api/admin/staff` provide OWNER-only catalogue, gaming-rate, station, member-rule and staff lifecycle controls. Staff password changes/session revocation are handled server-side.
-- `db/migrations/039_realtime_event_log.sql` persists realtime events for replay.
-- `lib/realtime.ts` and `/api/events` now support reconnect replay using a timestamp/event cursor while retaining live SSE delivery.
-- Production CSP now removes `unsafe-eval` and enables HSTS in production.
-- `scripts/validate-migrations.mjs` and `npm test` validate numbered migration/version integrity; CI runs this before the production build.
+- `db/migrations/036_inventory_recipes_batches_stocktakes.sql` and `037_inventory_reservation_decimal_qty.sql` add inventory materials, BOM/recipes, fractional stock, costed receiving, stocktakes, wastage reasons and material movement history.
+- `lib/inventory-materials.ts` implements material lifecycle, recipe management, receiving, valuation, stocktakes and reason-coded waste.
+- `lib/inventory.ts` uses configured recipes for reservation/consumption/release while retaining legacy direct-menu compatibility.
+- `db/migrations/038_finance_reconciliation.sql` adds auditable external transaction matching; reconciliation now covers both incoming revenue and outgoing refund/expense ledger records.
+- Provider-aware refund fields now capture provider, external reference and provider status without editing the original payment/refund ledger record.
+- `db/migrations/040_finance_reconciliation_scope.sql` records the expanded reconciliation scope.
+- `db/migrations/041_session_refund_provider.sql` adds provider-aware refund references/status.
+- `db/migrations/042_daily_close_approval.sql` adds persistent daily-close approval state and approving staff attribution.
+- `/reconciliation` now exposes incoming/outgoing records and separate unreconciled revenue/expense totals.
+- `/api/daily-close` and `/daily-close` support persistent cash count plus OWNER-only approval; approved closes cannot be overwritten.
+- `/admin` plus `/api/admin/catalog` and `/api/admin/staff` provide OWNER-only catalogue, gaming-rate, station, member-rule and staff lifecycle controls.
+- `db/migrations/039_realtime_event_log.sql`, `lib/realtime.ts` and `/api/events` provide persisted replay/reconnect-aware SSE.
+- Production CSP removes `unsafe-eval` and production HSTS is enabled.
+- `scripts/validate-migrations.mjs` and `npm test` validate numbered migration/version integrity before build.
 
 ## Remaining project modules — build order
 
 ### 1. Payment/reconciliation completion
-Complete provider-aware external refund references, automated import/matching where provider APIs are available, persistent daily-close approval, and cross-source reconciliation for food, gaming, booking deposits, credit repayments and provider records.
+Core reconciliation and close approval foundations are implemented. Remaining: provider-specific automated import/matching only where official APIs/credentials are available, provider webhook reconciliation, and operational exception resolution workflow.
 
 ### 2. Inventory completion
 Complete order-level FIFO batch consumption/COGS accounting, customer-facing out-of-stock behavior, full stocktake editing UI and richer supplier/expiry workflows.
@@ -64,10 +67,10 @@ Complete verified Windows kiosk/session-launch behavior, safe unlock/start, WOL/
 Polish customer/member lookup, calendar/timeline, modifiers, deposits, cancellation/refund policy, payment retry and out-of-stock UX.
 
 ### 6. Realtime completion
-Add event retention/pruning, stronger cursor semantics and multi-process/shared-broker delivery if deployment uses more than one Next.js process.
+Add event retention/pruning and shared broker delivery if deployment uses more than one Next.js process.
 
 ### 7. Testing/security/deployment
-Add MySQL integration/concurrency/security tests, request-ID/error hardening, shared distributed rate limiting, production CSP/HSTS acceptance, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
+Add MySQL integration/concurrency/security tests, request-ID/error hardening, distributed rate limiting, scheduled off-host backups, clean restore verification and actual café LAN/static-IP/router/HTTPS acceptance.
 
 ## Definition of 100%
 
@@ -100,3 +103,5 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added OWNER administration and staff lifecycle API/UI.
 - Added persisted realtime event replay and reconnect-aware SSE.
 - Hardened production CSP/HSTS and added migration integrity tests to CI.
+- Expanded reconciliation to expense/refund records and added provider-aware refund references.
+- Added persistent OWNER daily-close approval workflow.
