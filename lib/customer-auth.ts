@@ -10,7 +10,7 @@ const rateStore=globalThis as typeof globalThis & {[RATE_KEY]?:Map<string,number
 const otpRates=rateStore[RATE_KEY]??(rateStore[RATE_KEY]=new Map());
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const id=(prefix:string)=>`${prefix}-${randomUUID()}`;
-const rateLimit=(key:string,max:number,windowMs:number)=>{const now=Date.now(),values=(otpRates.get(key)||[]).filter((t:number)=>t>now-windowMs);if(values.length>=max){otpRates.set(key,values);return false;}values.push(now);otpRates.set(key,values);if(otpRates.size>5000){for(const[k,v]of otpRates){if(!v.some(t=>t>now-60*60*1000))otpRates.delete(k);}}return true;};
+const rateLimit=(key:string,max:number,windowMs:number)=>{const now=Date.now(),values=(otpRates.get(key)||[]).filter((t:number)=>t>now-windowMs);if(values.length>=max){otpRates.set(key,values);return false;}values.push(now);otpRates.set(key,values);if(otpRates.size>5000){for(const[k,v]of otpRates){if(!v.some((t:number)=>t>now-60*60*1000))otpRates.delete(k);}}return true;};
 type CustomerRow={id:string;mobile:string;name:string|null;member_id:string|null};
 
 export function normalizeMobile(value:string){const digits=value.replace(/\D/g,'');if(digits.length===10)return `+91${digits}`;if(digits.length===12&&digits.startsWith('91'))return `+${digits}`;if(value.trim().startsWith('+')&&/^\+?[1-9]\d{9,14}$/.test(value.trim()))return value.trim();return '';}
