@@ -7,12 +7,14 @@ export type SessionRefundMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
 const id=()=>`REF-${randomUUID()}`;
 const money=(v:unknown)=>Number(v||0);
 
-export async function refundSessionPayment(input:{settlementId:string;amount:number;method:SessionRefundMethod;staffId:string;reason:string;reference?:string;idempotencyKey?:string}){
+export async function refundSessionPayment(input:{settlementId:string;amount:number;method:SessionRefundMethod;staffId:string;reason:string;reference?:string;provider?:string;externalReference?:string;idempotencyKey?:string}){
   return transaction(async(c:PoolConnection)=>{
     const settlementId=input.settlementId.trim();
     const amount=Number(input.amount);
     const reason=input.reason.trim().slice(0,255);
     const key=input.idempotencyKey?.trim()||null;
+    const provider=input.provider?.trim().slice(0,80)||null;
+    const externalReference=input.externalReference?.trim().slice(0,160)||input.reference?.trim().slice(0,120)||null;
     if(!settlementId||!Number.isSafeInteger(amount)||amount<=0)throw Error('INVALID_REFUND');
     if(!['CASH','UPI','CARD','RAZORPAY','OTHER'].includes(input.method))throw Error('INVALID_REFUND_METHOD');
     if(!reason)throw Error('REFUND_REASON_REQUIRED');
@@ -41,7 +43,7 @@ export async function refundSessionPayment(input:{settlementId:string;amount:num
     if(!decision.refundable)throw Error(decision.reason);
 
     const refundId=id();
-    await c.execute('INSERT INTO session_payment_refunds(id,settlement_id,session_id,amount,method,status,reference,idempotency_key,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW(3))',[refundId,settlementId,sessionId,amount,input.method,'CAPTURED',input.reference?.trim().slice(0,120)||null,key,reason,input.staffId]);
+    await c.execute('INSERT INTO session_payment_refunds(id,settlement_id,session_id,amount,method,provider,external_reference,provider_status,status,reference,idempotency_key,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?,\'NOT_SENT\',?,?,?,?,?,NOW(3))',[refundId,settlementId,sessionId,amount,input.method,provider,externalReference,'CAPTURED',input.reference?.trim().slice(0,120)||null,key,reason,input.staffId]);
     await c.execute('INSERT INTO finance_transactions(id,type,category,description,amount,method,source_type,source_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(3))',[`FIN-${randomUUID()}`,'EXPENSE','PAYMENT_REFUND','Session payment refund '+settlementId,amount,input.method,'SESSION_PAYMENT_REFUND',refundId,input.staffId]);
 
     const[summary]=await settlementSummary(c,sessionId);
@@ -75,7 +77,7 @@ export async function listSessionRefunds(sessionId:string){
   return transaction(async(c)=>{
     const id=sessionId.trim();
     if(!id||id.length>64)throw Error('INVALID_SESSION_ID');
-    const[rows]=await c.query<RowDataPacket[]>('SELECT id,settlement_id,session_id,amount,method,status,reference,reason,created_by,created_at FROM session_payment_refunds WHERE session_id=? ORDER BY created_at DESC,id DESC',[id]);
-    return rows.map(r=>({id:String(r.id),settlementId:String(r.settlement_id),sessionId:String(r.session_id),amount:money(r.amount),method:String(r.method),status:String(r.status),reference:r.reference?String(r.reference):undefined,reason:String(r.reason),createdBy:r.created_by?String(r.created_by):undefined,createdAt:new Date(r.created_at).toISOString()}));
+    const[rows]=await c.query<RowDataPacket[]>('SELECT id,settlement_id,session_id,amount,method,status,provider,external_reference,provider_status,reference,reason,created_by,created_at FROM session_payment_refunds WHERE session_id=? ORDER BY created_at DESC,id DESC',[id]);
+    return rows.map(r=>({id:String(r.id),settlementId:String(r.settlement_id),sessionId:String(r.session_id),amount:money(r.amount),method:String(r.method),status:String(r.status),provider:r.provider?String(r.provider):undefined,externalReference:r.external_reference?String(r.external_reference):undefined,providerStatus:String(r.provider_status||'NOT_SENT'),reference:r.reference?String(r.reference):undefined,reason:String(r.reason),createdBy:r.created_by?String(r.created_by):undefined,createdAt:new Date(r.created_at).toISOString()}));
   });
 }
