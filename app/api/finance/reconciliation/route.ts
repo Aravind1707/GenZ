@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {cookies} from 'next/headers';
-import {COOKIE,requireStaff,audit} from '../../../../../lib/staff-auth';
-import {listReconciliationCandidates,reconcileFinanceTransaction,reconciliationSummary} from '../../../../../lib/finance-reconciliation';
+import {COOKIE,requireStaff,audit} from '../../../../lib/staff-auth';
+import {listReconciliationCandidates,reconcileFinanceTransaction,reconciliationSummary} from '../../../../lib/finance-reconciliation';
 const auth=async(p:string)=>requireStaff((await cookies()).get(COOKIE)?.value,p);
 export async function GET(){try{await auth('finance:read');return NextResponse.json({ok:true,summary:await reconciliationSummary(),candidates:await listReconciliationCandidates()},{headers:{'Cache-Control':'no-store'}})}catch(e){const m=e instanceof Error?e.message:'';return NextResponse.json({ok:false,error:m},{status:m==='STAFF_FORBIDDEN'?403:401})}}
 export async function POST(req:Request){try{const staff=await auth('finance:write');const b=await req.json();const result=await reconcileFinanceTransaction({financeTransactionId:String(b.financeTransactionId||''),provider:String(b.provider||''),reference:String(b.reference||''),externalAmount:Number(b.externalAmount),notes:typeof b.notes==='string'?b.notes:undefined,staffId:staff.id});await audit(staff.id,'FINANCE_RECONCILIATION_SAVED','finance_transaction',result.id,result);return NextResponse.json({ok:true,result})}catch(e){const m=e instanceof Error?e.message:'Reconciliation failed';return NextResponse.json({ok:false,error:m},{status:m==='STAFF_FORBIDDEN'?403:m==='STAFF_UNAUTHORIZED'?401:400})}}
