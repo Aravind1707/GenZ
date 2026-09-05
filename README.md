@@ -27,6 +27,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Static-IP/public-origin configuration and owner remote-access/VPN deployment guidance.
 - Admin screens for sessions, settlements, **combined session receipts**, bookings, food orders, kitchen, finance, members, stations and inventory.
 - Transactional session-payment refunds with partial-refund limits, idempotency, mandatory reasons, finance reversal entries and audit logging.
+- Daily close screen with tender/refund/expense breakdown, earned-revenue timing differences, expected cash movement and persisted physical-cash variance.
 
 ## Accounting invariants
 
@@ -35,6 +36,8 @@ Every payment is recorded transactionally and attributed to its source. Session 
 A session refund never edits the original payment. It creates a separate captured refund linked to the original settlement, capped by that payment's remaining refundable balance. Refunds reduce the session's net paid amount and can reopen an outstanding balance; staff must settle that balance or use the approved credit workflow. A settlement with an existing refund cannot be voided, preventing contradictory financial reversals.
 
 The staff receipt view combines server-calculated gaming charges, itemized food orders, deposit/group allocations, billing adjustments, monthly credit, session payment history and payment refunds. Receipt data is read-only except for the explicit staff refund action, which creates its own auditable financial records.
+
+Daily close separates tender collection from earned revenue so booking-deposit advances and monthly-credit timing are visible instead of being silently mixed into sales. Physical cash is counted separately and compared with expected cash-drawer movement; a variance is never hidden by changing the ledger.
 
 ## Station security
 
@@ -65,6 +68,7 @@ The canonical schema is followed by incremental migrations. Current feature migr
 - `032_station_agent_commands.sql`
 - `033_session_payment_refunds.sql`
 - `034_session_payment_refund_idempotency.sql`
+- `035_daily_cash_counts.sql`
 
 Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
 
@@ -123,7 +127,7 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 4. Configuration screens for menu, gaming rates, station metadata and images.
 5. Customer/member search and management polish, including monthly credit UI.
 6. ~~Combined receipts foundation~~ — staff combined session receipt and transactional session-payment refunds are implemented; continue with cross-source payment reconciliation.
-7. Daily close and cash-drawer controls.
+7. ~~Daily close foundation~~ — tender/refund/expense report and physical cash-count variance are implemented; continue with persistent close approval and cross-source reconciliation.
 8. Station-agent heartbeat and hardware-control abstraction.
 9. Implement and verify the exact POS provider adapter for dynamic UPI QR/card terminal payments.
 10. Operational health monitoring and verified backup/restore.
