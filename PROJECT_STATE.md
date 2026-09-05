@@ -49,7 +49,7 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 
 ## Completed foundations
 
-Customer OTP/security, membership recognition and server-authoritative pricing; food ordering and counter-payable orders; bookings/check-in/no-show backend; gaming sessions, participants and server-computed billing; session extension and station QR attribution; authenticated realtime customer/KDS foundations; session settlement with Cash/UPI/Card/Other, partial/split payments and idempotency; station lock-until-settlement lifecycle; approved monthly credit accounts, limits, statements and repayments; OWNER/MANAGER roles; inventory reservation/movement foundation; finance ledger foundation; static-IP/Windows deployment foundation with HTTPS reverse proxy and firewall guidance; combined staff session receipt foundation.
+Customer OTP/security, membership recognition and server-authoritative pricing; food ordering and counter-payable orders; bookings/check-in/no-show backend; gaming sessions, participants and server-computed billing; session extension and station QR attribution; authenticated realtime customer/KDS foundations; session settlement with Cash/UPI/Card/Other, partial/split payments and idempotency; station lock-until-settlement lifecycle; approved monthly credit accounts, limits, statements and repayments; OWNER/MANAGER roles; inventory reservation/movement foundation; finance ledger foundation; static-IP/Windows deployment foundation with HTTPS reverse proxy and firewall guidance; combined staff session receipt foundation; transactional session-payment refunds.
 
 ## New hardening/build foundations
 
@@ -60,9 +60,12 @@ Customer OTP/security, membership recognition and server-authoritative pricing; 
 - `/api/station-agent/commands` authenticates agents with per-station secrets and staff command requests using the existing staff authorization model.
 - `scripts/station-agent.mjs` polls commands, acknowledges them, enforces session lease expiry locally, and supports Windows workstation lock/shutdown commands. Vendor-specific launch/unlock adapters remain intentionally unimplemented until hardware requirements are verified.
 - `lib/billing-reconciliation.ts` provides server-side bill/payment/credit reconciliation invariants and is ES-target compatible.
-- `lib/refund-policy.ts` provides a pure refund eligibility/remaining-balance policy boundary; actual execution remains transactional in the payment/finance layer.
+- `lib/refund-policy.ts` provides a pure refund eligibility/remaining-balance policy boundary.
 - `lib/daily-close.ts` provides tender-net and ledger-vs-tender balancing invariants.
-- `lib/receipt.ts`, `/api/sessions/receipt` and `/receipts` provide a read-only combined session receipt with gaming participants, food orders/items, deposits/group allocations, adjustments, monthly credit and session payment history.
+- `db/migrations/033_session_payment_refunds.sql` and `034_session_payment_refund_idempotency.sql` add immutable session-payment refund records with idempotency keys.
+- `lib/session-refunds.ts` executes partial session-payment refunds transactionally, caps refunds at each captured settlement's remaining balance, creates finance reversal entries, and reopens/block the session when a refund creates an outstanding balance.
+- `/api/session-refunds` provides staff-only refund listing and execution with `payments:read`/`payments:write` authorization and audit logging.
+- `lib/receipt.ts`, `/api/sessions/receipt` and `/receipts` now expose gaming participants, food orders/items, deposits/group allocations, billing adjustments, monthly credit, session payment history and payment refunds. The receipt page can initiate a partial refund for a captured session payment.
 - `app/layout.tsx` exposes the receipts screen in staff navigation.
 - `docs/STATION_AGENT_PROTOCOL.md`, `docs/REFUND_RECONCILIATION.md`, `docs/BACKUP_RESTORE.md`, `docs/PRODUCTION_CHECKLIST.md` and `docs/BUILD_ROADMAP.md` document the operational contracts and remaining build order.
 
@@ -72,7 +75,7 @@ Customer OTP/security, membership recognition and server-authoritative pricing; 
 Complete physical PC enforcement around the authenticated command path: a verified Windows kiosk/session-launch implementation, safe unlock/start semantics, WOL/graceful shutdown, and adapters for console/VR/MOZA hardware. Exact vendor APIs must be verified before implementation.
 
 ### Receipts/refunds/reconciliation
-Receipt foundation is now implemented for staff session tabs. Continue with partial refunds, reversals, void policy expansion and a transactional cross-source payment reconciliation screen.
+Receipt and transactional session-payment refund foundations are implemented. Continue with cross-source payment reconciliation, provider-aware external refund references and refund/void policy expansion where required.
 
 ### Finance/daily close
 Build canonical reconciliation against all captured tenders and reversals, deposit application/refund representation, cash drawer and daily close report.
@@ -123,4 +126,5 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added persistent authenticated station heartbeat telemetry and durable station command queue.
 - Added station-agent command polling, acknowledgement, lease-expiry fail-closed locking, and safe Windows lock/shutdown hooks.
 - Fixed CI build failure caused by ES-target-incompatible BigInt literals in billing reconciliation and corrected mysql2 command acknowledgement result typing.
-- Added read-only combined session receipt service, staff API and receipt screen.
+- Added combined session receipt service, staff API and receipt screen.
+- Added immutable partial session-payment refunds, refund idempotency, finance reversal entries, settlement-balance integration, receipt refund visibility and staff refund controls.
