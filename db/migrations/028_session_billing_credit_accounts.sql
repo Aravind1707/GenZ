@@ -1,10 +1,17 @@
 USE genz_os;
 
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS customer_id VARCHAR(64) NULL AFTER customer_name;
-ALTER TABLE sessions ADD INDEX IF NOT EXISTS idx_sessions_customer_status(customer_id,status);
-ALTER TABLE sessions ADD CONSTRAINT fk_sessions_customer_credit FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE SET NULL;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sessions' AND index_name='idx_sessions_customer_status');
+SET @sql := IF(@idx_exists=0,'ALTER TABLE sessions ADD INDEX idx_sessions_customer_status(customer_id,status)','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @fk_exists := (SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND table_name='sessions' AND constraint_name='fk_sessions_customer_credit');
+SET @sql := IF(@fk_exists=0,'ALTER TABLE sessions ADD CONSTRAINT fk_sessions_customer_credit FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE SET NULL','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS settlement_status ENUM('NOT_DUE','DUE','PARTIALLY_PAID','CREDIT','SETTLED') NOT NULL DEFAULT 'NOT_DUE' AFTER status;
-ALTER TABLE sessions ADD INDEX IF NOT EXISTS idx_sessions_settlement(settlement_status,status);
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sessions' AND index_name='idx_sessions_settlement');
+SET @sql := IF(@idx_exists=0,'ALTER TABLE sessions ADD INDEX idx_sessions_settlement(settlement_status,status)','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS customer_credit_accounts (
   customer_id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -44,7 +51,7 @@ CREATE TABLE IF NOT EXISTS customer_credit_payments (
   created_by VARCHAR(64) NULL,
   created_at DATETIME(3) NOT NULL,
   CONSTRAINT fk_credit_payment_customer FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  CONSTRAINT fk_credit_payment_staff FOREIGN KEY(created_by) REFERENCES staff_users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_credit_payment_staff FOREIGN KEY(approved_by) REFERENCES staff_users(id) ON DELETE SET NULL,
   INDEX idx_credit_payment_customer_created(customer_id,created_at)
 ) ENGINE=InnoDB;
 
