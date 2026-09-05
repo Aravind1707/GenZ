@@ -6,35 +6,9 @@ import {getSessionSettlement} from '../../../../lib/session-settlement';
 import {publish} from '../../../../lib/realtime';
 
 const methods=['CASH','UPI','CARD','RAZORPAY','OTHER'] as const;
-const errorResponse=(e:unknown)=>{
- const m=e instanceof Error?e.message:'';
- const status=m==='STAFF_UNAUTHORIZED'?401:m==='STAFF_FORBIDDEN'?403:m==='SESSION_NOT_FOUND'||m==='PAYMENT_NOT_FOUND_AFTER_CAPTURE'?404:m.includes('EXCEEDS')||m.includes('MUST_BE')||m.includes('OPEN_GROUP')?409:400;
- return NextResponse.json({ok:false,error:m||'Unable to process session payment'},{status});
-};
-
+const errorResponse=(e:unknown)=>{const m=e instanceof Error?e.message:'';const status=m==='STAFF_UNAUTHORIZED'?401:m==='STAFF_FORBIDDEN'?403:m==='SESSION_NOT_FOUND'||m==='PAYMENT_NOT_FOUND_AFTER_CAPTURE'?404:m.includes('EXCEEDS')||m.includes('MUST_BE')||m.includes('OPEN_GROUP')?409:400;return NextResponse.json({ok:false,error:m||'Unable to process session payment'},{status});};
 export const dynamic='force-dynamic';
 
-export async function GET(req:Request){
- try{
-  await requireStaff((await cookies()).get(COOKIE)?.value,'payments:read');
-  const url=new URL(req.url),sessionId=url.searchParams.get('sessionId')?.trim()||'',paymentId=url.searchParams.get('paymentId')?.trim()||'';
-  if(paymentId){const payment=await getSessionPayment(paymentId);if(!payment)return NextResponse.json({ok:false,error:'Payment not found'},{status:404});return NextResponse.json({ok:true,payment},{headers:{'Cache-Control':'no-store'}});}
-  if(!sessionId||sessionId.length>64)return NextResponse.json({ok:false,error:'Invalid session ID'},{status:400});
-  const [payments,settlement]=await Promise.all([listSessionPayments(sessionId),getSessionSettlement(sessionId)]);
-  return NextResponse.json({ok:true,payments,settlement},{headers:{'Cache-Control':'no-store'}});
- }catch(e){return errorResponse(e)}
-}
+export async function GET(req:Request){try{await requireStaff((await cookies()).get(COOKIE)?.value,'payments:read');const url=new URL(req.url),sessionId=url.searchParams.get('sessionId')?.trim()||'',paymentId=url.searchParams.get('paymentId')?.trim()||'';if(paymentId){const payment=await getSessionPayment(paymentId);if(!payment)return NextResponse.json({ok:false,error:'Payment not found'},{status:404});return NextResponse.json({ok:true,payment},{headers:{'Cache-Control':'no-store'}});}if(!sessionId||sessionId.length>64)return NextResponse.json({ok:false,error:'Invalid session ID'},{status:400});const[payments,settlement]=await Promise.all([listSessionPayments(sessionId),getSessionSettlement(sessionId)]);return NextResponse.json({ok:true,payments,settlement},{headers:{'Cache-Control':'no-store'}});}catch(e){return errorResponse(e)}}
 
-export async function POST(req:Request){
- try{
-  const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'payments:write');
-  const length=Number(req.headers.get('content-length')||0);if(length>4096)return NextResponse.json({ok:false,error:'Request body too large'},{status:413});
-  const b=await req.json();const sessionId=typeof b?.sessionId==='string'?b.sessionId.trim():'';const method=b?.method;const amount=Number(b?.amount);const idem=req.headers.get('Idempotency-Key')?.trim()||'';
-  if(!sessionId||sessionId.length>64||!methods.includes(method)||!Number.isSafeInteger(amount)||amount<=0)return NextResponse.json({ok:false,error:'Invalid payment request'},{status:400});
-  if(idem.length>100)return NextResponse.json({ok:false,error:'Invalid Idempotency-Key'},{status:400});
-  const result=await captureSessionPayment({sessionId,amount,method,staffId:staff.id,idempotencyKey:idem||undefined});
-  await audit(staff.id,'SESSION_PAYMENT_CAPTURED','session',sessionId,{paymentId:result.payment.id,amount:result.payment.amount,method:result.payment.method,existing:result.payment.status==='CAPTURED'});
-  publish('PAYMENT_CAPTURED',{sessionId,paymentId:result.payment.id,amount:result.payment.amount,method:result.payment.method});
-  return NextResponse.json({ok:true,...result},{status:201});
- }catch(e){return errorResponse(e)}
-}
+export async function POST(req:Request){try{const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'payments:write');const length=Number(req.headers.get('content-length')||0);if(length>4096)return NextResponse.json({ok:false,error:'Request body too large'},{status:413});const b=await req.json();const sessionId=typeof b?.sessionId==='string'?b.sessionId.trim():'';const method=b?.method;const amount=Number(b?.amount);const idem=req.headers.get('Idempotency-Key')?.trim()||'';if(!sessionId||sessionId.length>64||!methods.includes(method)||!Number.isSafeInteger(amount)||amount<=0)return NextResponse.json({ok:false,error:'Invalid payment request'},{status:400});if(idem.length>100)return NextResponse.json({ok:false,error:'Invalid Idempotency-Key'},{status:400});const result=await captureSessionPayment({sessionId,amount,method,staffId:staff.id,idempotencyKey:idem||undefined});await audit(staff.id,'SESSION_PAYMENT_CAPTURED','session',sessionId,{paymentId:result.payment.id,amount:result.payment.amount,method:result.payment.method,existing:result.existing});if(!result.existing)publish('PAYMENT_CAPTURED',{sessionId,paymentId:result.payment.id,amount:result.payment.amount,method:result.payment.method});return NextResponse.json({ok:true,...result},{status:result.existing?200:201});}catch(e){return errorResponse(e)}}
