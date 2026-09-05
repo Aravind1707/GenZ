@@ -13,6 +13,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Gaming price list and food ordering with **Pay Now** / **Pay at Counter** only.
 - Razorpay order/signature/webhook foundation and food payment idempotency.
 - Transactional food inventory reservation, release and consumption.
+- Recipe/BOM inventory foundation with material stock, receiving batches, unit costs, stocktakes, wastage reasons, valuation and menu-to-material reservation.
 - Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent, with member pricing rates snapshotted at participant creation.
 - Active/paused/ended sessions, participant-level pause-aware billing, server-side rate snapshots and session extensions.
 - Individual session final billing with gaming + unpaid food, counter settlement, partial/split Cash/UPI/Card payments and settlement-before-equipment-release.
@@ -69,6 +70,8 @@ The canonical schema is followed by incremental migrations. Current feature migr
 - `033_session_payment_refunds.sql`
 - `034_session_payment_refund_idempotency.sql`
 - `035_daily_cash_counts.sql`
+- `036_inventory_recipes_batches_stocktakes.sql`
+- `037_inventory_reservation_decimal_qty.sql`
 
 Run `npm run db:migrate` against the admin-PC MySQL database. The migration runner creates the canonical schema first and then applies only unapplied numbered migrations.
 
@@ -123,7 +126,7 @@ CI runs `npm install` and `npm run build` on pushes and pull requests to `main`.
 
 1. Automated integration/security tests against MySQL.
 2. Customer/KDS realtime subscriptions with replay/reconnect semantics.
-3. Menu recipes/BOM, stocktake, COGS and receiving costs.
+3. ~~Menu recipes/BOM, stocktake, COGS and receiving costs~~ — recipe/material, stocktake, receiving-batch cost and valuation foundations are implemented; continue with order-level FIFO COGS reporting.
 4. Configuration screens for menu, gaming rates, station metadata and images.
 5. Customer/member search and management polish, including monthly credit UI.
 6. ~~Combined receipts foundation~~ — staff combined session receipt and transactional session-payment refunds are implemented; continue with cross-source payment reconciliation.
