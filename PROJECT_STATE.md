@@ -23,7 +23,7 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - Gaming/session bills are settled at the counter unless an approved customer is explicitly posted to monthly credit.
 - A bill can contain multiple payment entries and supports partial/split Cash, UPI and Card/POS settlement.
 - A failed payment never closes a bill.
-- An equipment session is not fully released for reuse until its settlement is paid or an approved monthly-credit posting succeeds.
+- An equipment session is not fully released for reuse until its settlement is paid or legitimately moved to approved monthly credit.
 - Trusted monthly billing is an approved credit account, not a wallet. It has a configurable credit limit and separate charge/payment ledger.
 - QR identifies a station only and never grants authorization; live station challenges bind a verified customer to an active session.
 - Preserve customer -> participant -> session -> station -> order -> payment/credit attribution.
@@ -36,7 +36,9 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - Lazy MySQL pool keeps builds independent of a live database.
 - GitHub Actions runs `npm install` and `npm run build`.
 - Core café operation is LAN-first; MSG91/Razorpay are integrations.
-- Static IP is treated as a stable public network entry point, not as authentication. Recommended owner remote access is HTTPS for the admin app plus VPN for private café infrastructure.
+- Static IP is a stable public network entry point, not authentication.
+- Production target is Windows admin-PC/server + local MySQL + Next.js on localhost + HTTPS reverse proxy + router firewall/NAT.
+- Owner-only access to private café infrastructure is via VPN; MySQL/RDP/SSH/router/CCTV/station-agent ports are not public.
 - Optional POS/ECR integration is provider-neutral and disabled by default until the exact terminal/provider API is verified.
 
 ## Staff roles
@@ -58,35 +60,30 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - Station QR uses a short-lived, single-use, station-specific live challenge and creates participant attribution atomically.
 - Customer security page and authenticated SSE customer events are implemented.
 
-## Session and payment work completed in this milestone
+## Session, payment and credit work completed
 
-- Manager can create counter-payable food orders against an active session through `POST /api/session-orders`.
-- Session final-bill API supports counter Cash, UPI, Card/POS and Other payments through repeatable settlement entries.
-- Partial payments are supported; the remaining balance is calculated server-side.
-- Split payments are supported by adding multiple settlement entries, e.g. Cash ₹250 + UPI ₹250.
+- Manager can create counter-payable food orders against an active session.
+- Session final-bill API supports Cash, UPI, Card/POS and Other settlement methods.
+- Partial/split payments are supported and server-calculated.
 - Payment idempotency is preserved for settlement retries.
-- Ending a session now produces a settlement-pending state instead of immediately releasing the equipment.
-- A station is released only when the final outstanding amount reaches zero.
-- Approved monthly-credit posting also releases the station and records the amount as a customer credit charge.
-- Session settlement responses expose gaming total, food total, paid amount, credit applied, outstanding amount and settlement status.
-- Customer linking can be attached to a session for accurate monthly-credit attribution.
+- Ending a session produces a settlement-pending state; equipment is released only after full settlement or approved credit posting.
+- Approved monthly-credit posting releases the station and records the amount as a customer credit charge.
+- Monthly credit accounts support manager approval, configurable limits, monthly/manual cycles, suspension, statements, session charges and repayments.
+- Credit repayments support Cash/UPI/Card/Other, optional references and idempotency.
+- Credit balances/available credit are calculated server-side and credit limits are enforced transactionally.
+- `/credit` provides manager-facing account search, activation/control, repayment and statement management.
 
-## Trusted monthly customer billing
+## Static IP / production deployment — foundation complete
 
-- `customer_credit_accounts` stores approval status, credit limit, billing cycle and approving staff member.
-- `customer_credit_entries` records session charges with a unique source identity to prevent duplicate posting.
-- `customer_credit_payments` records Cash/UPI/Card/Other repayments separately.
-- Credit balance and available credit are calculated server-side.
-- Credit account API supports enable, suspend, statement, payment, attach-session and charge-session operations.
-- Credit limits prevent new charges from exceeding the approved limit.
-- Membership remains independent from credit status.
-
-## POS/static-IP foundation
-
-- `.env.example` now contains static-IP/public-origin and optional POS/ECR feature flags.
-- `lib/payment-terminal.ts` provides a provider-neutral boundary for dynamic UPI QR and card terminal requests.
-- POS integration, dynamic UPI QR, card integration and automatic confirmation are disabled by default until a real provider adapter is installed.
-- `docs/STATIC_IP_AND_POS.md` documents the recommended HTTPS/VPN network layout, public exposure rules and intended integrated POS flow.
+- `.env.example` contains public-origin/static-IP and owner VPN settings.
+- `docs/STATIC_IP_AND_POS.md` documents the network/security model.
+- `deploy/windows/install-genz.ps1` installs/updates the app and verifies the production build.
+- `deploy/windows/register-genz-service.ps1` registers GenZ to start at Windows boot on port 3000.
+- `deploy/windows/run-genz.ps1` runs `next start` in production mode.
+- `deploy/windows/Caddyfile` provides the HTTPS reverse-proxy/security-header configuration.
+- `deploy/windows/configure-firewall.ps1` creates Windows firewall rules for the app/reverse proxy.
+- `deploy/windows/README.md` contains DNS, router/NAT, LAN IP, secrets, migration, HTTPS, firewall and external-validation procedures.
+- The ISP static IP itself cannot be configured from software; the final DNS A record, router NAT/firewall policy, certificate issuance and ISP routing must be applied at the café.
 
 ## Remaining project modules
 
@@ -100,7 +97,7 @@ Live admin queue, status progression, counter payment authorization, inventory r
 Reservation/movement foundation and admin receive/adjust/waste/reorder/unit settings exist. Remaining: menu-to-stock mapping, recipe/BOM, COGS, receiving batches/cost, stocktake, wastage reasons and customer out-of-stock UX.
 
 ### Finance
-Ledger, food/group/gaming settlement revenue and booking deposit advance classification exist. New counter settlement entries and monthly credit payments are now persisted. Remaining: canonical reconciliation, deposit application/refund representation, refunds/reversals, cash drawer and daily close.
+Ledger, food/group/gaming settlement revenue and booking deposit advance classification exist. Counter settlement entries and monthly credit payments are persisted. Remaining: canonical reconciliation, deposit application/refund representation, refunds/reversals, cash drawer and daily close.
 
 ### Receipts/refunds/reconciliation
 Need unified food/gaming/group/combined receipts, payment IDs/methods, partial refunds, reversals and reconciliation.
@@ -112,13 +109,13 @@ Authenticated SSE and customer/KDS subscription foundations exist. Remaining: re
 Need production CRUD/configuration, pricing, member rules, images/specs, station overrides and effective-date management.
 
 ### Membership/customer/staff admin
-Customer security is complete; membership and staff backend foundations exist. Remaining: full lifecycle/search/history UI, staff CRUD/password reset/session revocation polish, monthly credit management UI.
+Customer security is complete; membership and staff backend foundations exist. Remaining: full lifecycle/search/history UI, staff CRUD/password reset/session revocation polish.
 
 ### Hardware/health/backups
 Need station agents/state machine, WOL/graceful shutdown, console/VR/MOZA adapters, heartbeat, DB/service health and tested backups/restores. POS provider adapter remains hardware/vendor dependent.
 
 ### Testing/security/deployment
-Need automated MySQL concurrency/security tests, final error/request-ID hardening, bounded shared rate limiting, CSP/HSTS production policy, migration duplicate-version checks, and final Windows admin-PC/LAN deployment validation.
+Static-IP deployment foundation is now scripted/documented. Remaining: run the final validation at the actual café network, automated MySQL concurrency/security tests, final error/request-ID hardening, bounded shared rate limiting, CSP/HSTS production policy, migration duplicate-version checks, and verified backup/restore.
 
 ## Definition of 100%
 
@@ -130,7 +127,6 @@ BOOKING
  -> GAMING BILLING
  -> FOOD ORDERS
  -> PAYMENTS
- -> GROUP SETTLEMENT
  -> RECEIPT
  -> FINANCE
  -> DAILY CLOSE
@@ -147,5 +143,6 @@ Plus reliable fresh bootstrap/upgrades, authorization, payments, inventory, real
 - Added final session settlement API for Cash/UPI/Card/Other with partial/split settlement support.
 - Added station lock-until-settlement lifecycle so an unpaid ended session cannot immediately make equipment available.
 - Added trusted monthly customer credit accounts, credit limits, session posting, repayment ledger and statements.
-- Added optional provider-neutral POS/ECR integration boundary and static-IP/owner-remote-access configuration documentation; live terminal adapter remains disabled until the exact POS model/provider is verified.
-- Previous CI build failure in `staff-auth.ts` was fixed in commit `f1ad4f1`; CI #266 passed. New changes are awaiting their own CI verification.
+- Added optional provider-neutral POS/ECR integration boundary and static-IP/owner-remote-access configuration documentation.
+- Added Windows production installer, boot-start runner, HTTPS reverse-proxy configuration, firewall setup and end-to-end static-IP deployment instructions.
+- Latest completed CI before this deployment work: run 33945755185 passed `npm run build` on the monthly-credit UI commit.
