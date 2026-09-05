@@ -11,9 +11,13 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Server-authoritative membership recognition and dynamic member/non-member pricing.
 - Gaming price list and food ordering with **Pay Now** / **Pay at Counter** only.
 - Razorpay order/signature/webhook foundation and food payment idempotency.
-- Transactional food inventory reservation, release and consumption, plus recipe/material, costed receiving, stocktake and waste foundations.
+- Transactional food inventory reservation, release and consumption, plus recipe/material, costed receiving, stocktake and waste workflows.
 - Recipe-aware food availability: if any configured main ingredient is unavailable, the customer still sees the dish but its image receives a **NOT AVAILABLE RIGHT NOW** overlay and ordering is disabled.
-- Recipe-backed delivered-order consumption uses FIFO inventory batches and writes immutable COGS ledger entries.
+- Recipe-backed delivered-order consumption uses **expiry-safe FIFO inventory batches** and writes immutable COGS ledger entries.
+- Receiving records costed batches, supplier purchase history and expiry; expired/same-day batches are rejected.
+- Stocktakes support staged count editing followed by explicit authorization/finalization before variance changes stock.
+- Inventory movement/history, supplier history, valuation and daily COGS reporting are available through authenticated inventory APIs/UI.
+- Negative stock and consumption beyond available/reserved stock are rejected transactionally.
 - Permanent station QR identifies equipment only; active station binding requires a short-lived challenge from a trusted station agent.
 - Active/paused/ended sessions, participant billing, rate snapshots and extensions.
 - Combined gaming+food settlement with partial/split payments and settlement-before-equipment-release.
@@ -34,7 +38,7 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 
 ## Database migrations
 
-The canonical migration directory currently contains numbered migrations through `046`. Migration `046_daily_close_controls.sql` adds the close-event audit trail and reopen counter. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers and the accounting/payment contracts.
+The canonical migration directory currently contains numbered migrations through `047`. Migration `047_inventory_controls.sql` adds supplier/purchase-history, stocktake approval and inventory authorization metadata. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers and the accounting/payment/inventory contracts.
 
 ## Fast deployment
 
@@ -85,7 +89,7 @@ Staff and customer sessions use hashed tokens with expiry/inactivity limits. Bro
 ## Remaining build order
 
 1. **Payment/finance:** continue provider-specific hardening, external reference mapping and exception-resolution polish.
-2. **Inventory:** complete stocktake/supplier/expiry UX and verify COGS against real delivered orders.
+2. **Inventory:** run full MySQL integration scenarios against real delivered orders, including multi-batch FIFO, fractional recipes, expiry boundaries and stocktake concurrency.
 3. **Admin:** complete effective-date pricing, station overrides, customer lifecycle and richer staff UX.
 4. **Station hardware:** verified Windows kiosk/session launch, safe unlock/start, WOL/shutdown and console/VR/MOZA adapters only after exact hardware APIs are verified.
 5. **Bookings/KDS:** calendar/timeline, modifiers, lookup, deposit/refund polish and payment retry.
