@@ -36,6 +36,10 @@ GenZ OS runs primarily on the café admin PC with MySQL as the source of truth. 
 - Persisted realtime event replay/reconnect cursor foundation.
 - Production CSP/HSTS hardening, request correlation IDs and migration-integrity tests in CI.
 
+## Inventory complete
+
+Inventory now includes expiry-safe FIFO consumption, immutable COGS, staged/approved stocktakes, supplier management, costed receiving, batch/expiry controls, wastage, low-stock indicators, customer out-of-stock protection, movement/audit history, authorized adjustments, negative-stock prevention, purchase history, inventory valuation and COGS reporting. Full MySQL integration verification against real café data remains a final QA/deployment activity.
+
 ## Database migrations
 
 The canonical migration directory currently contains numbered migrations through `047`. Migration `047_inventory_controls.sql` adds supplier/purchase-history, stocktake approval and inventory authorization metadata. Run `npm run db:migrate` against the admin-PC MySQL database. `npm test` validates migration numbering/version markers and the accounting/payment/inventory contracts.
@@ -79,8 +83,6 @@ npm run build
 npm run db:migrate
 npm start
 ```
-
-The app is responsive for desktop PCs, tablets and mobile phones. Customer food cards switch to a single-column mobile layout while desktop uses a multi-column layout; customer controls and checkout remain touch-friendly.
 
 ## Security
 
