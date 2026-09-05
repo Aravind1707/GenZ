@@ -22,11 +22,10 @@ export async function POST(req:Request){
   try{
     const staff=await requireStaff((await cookies()).get(COOKIE)?.value,'payments:write');
     const body=await req.json();
-    const settlementId=str(body?.settlementId);
-    const reason=str(body?.reason);
+    const settlementId=str(body?.settlementId),reason=str(body?.reason);
     if(!settlementId||settlementId.length>64)return NextResponse.json({ok:false,error:'Invalid settlementId'},{status:400});
     if(!reason)return NextResponse.json({ok:false,error:'Refund reason is required'},{status:400});
-    const result=await refundSessionPayment({settlementId,amount:Number(body?.amount),method:body?.method,staffId:staff.id,reason,reference:str(body?.reference)||undefined,idempotencyKey:str(body?.idempotencyKey)||undefined});
+    const result=await refundSessionPayment({settlementId,amount:Number(body?.amount),method:body?.method,staffId:staff.id,reason,reference:str(body?.reference)||undefined,provider:str(body?.provider)||undefined,externalReference:str(body?.externalReference)||undefined,idempotencyKey:str(body?.idempotencyKey)||undefined});
     await audit(staff.id,'SESSION_PAYMENT_REFUNDED','session',result.sessionId,{settlementId,refundId:result.refundId,amount:result.amount,method:result.method,reason});
     return NextResponse.json({ok:true,refund:result});
   }catch(e){
