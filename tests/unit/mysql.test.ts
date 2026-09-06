@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDbValue } from '../../lib/mysql';
+import { normalizeDbSql, normalizeDbValue } from '../../lib/mysql';
 
 test('normalizeDbValue converts ISO timestamps to Date values', () => {
   const value = normalizeDbValue('2026-09-06T17:22:16.547Z');
@@ -20,4 +20,16 @@ test('normalizeDbValue recursively normalizes arrays and plain objects', () => {
   assert.equal(value.name, 'Guest');
   assert.ok(Array.isArray(value.values));
   assert.ok((value.values as unknown[])[0] instanceof Date);
+});
+
+test('normalizeDbSql upgrades the legacy active-member predicate to nullable expiry semantics', () => {
+  assert.equal(
+    normalizeDbSql('SELECT id FROM members WHERE id=? AND active=TRUE AND expires_at>=CURDATE() LIMIT 1'),
+    'SELECT id FROM members WHERE id=? AND active=TRUE AND (expires_at IS NULL OR expires_at>=CURDATE()) LIMIT 1',
+  );
+});
+
+test('normalizeDbSql leaves explicit expiry predicates untouched', () => {
+  const sql = 'SELECT id FROM members WHERE active=TRUE AND (expires_at IS NULL OR expires_at>=CURDATE())';
+  assert.equal(normalizeDbSql(sql), sql);
 });
