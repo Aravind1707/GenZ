@@ -1,4 +1,5 @@
 import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
 import {requireStaff,audit,COOKIE} from '../../../lib/staff-auth';
 import {createMembership,listMembershipTransactions,renewMembership} from '../../../lib/membership-transactions';
 
