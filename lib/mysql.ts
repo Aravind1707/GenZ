@@ -1,22 +1,16 @@
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 
-const required = (name: string) => {
+const required = (name: string): string => {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
 };
 
 const globalKey = '__genz_mysql_pool__';
 const globalStore = globalThis as typeof globalThis & { [globalKey]?: Pool };
-
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})$/;
 const LEGACY_ACTIVE_MEMBER_PREDICATE = /active=TRUE\s+AND\s+expires_at>=CURDATE\(\)/g;
 
-/**
- * MySQL DATETIME does not accept JavaScript's ISO `T...Z` representation as a
- * plain string in all SQL modes. Convert ISO timestamp strings to Date objects
- * at the DB boundary so every caller gets the same safe serialization path.
- * Date-only and ordinary application strings are intentionally left untouched.
- */
 export function normalizeDbValue(value: unknown): unknown {
   if (typeof value === 'string' && ISO_DATETIME.test(value)) {
     const date = new Date(value);
@@ -29,11 +23,6 @@ export function normalizeDbValue(value: unknown): unknown {
   return value;
 }
 
-/**
- * Compatibility normalization for application SQL written before memberships
- * became non-expiring. It is intentionally exact and only affects the old
- * active-member predicate; explicit expiry checks elsewhere remain untouched.
- */
 export function normalizeDbSql(sql: unknown): unknown {
   if (typeof sql !== 'string') return sql;
   return sql.replace(LEGACY_ACTIVE_MEMBER_PREDICATE, 'active=TRUE AND (expires_at IS NULL OR expires_at>=CURDATE())');
@@ -77,8 +66,6 @@ function getPool(): Pool {
   return globalStore[globalKey];
 }
 
-// Keep module import/builds independent from a live MySQL server. The pool is
-// constructed only when a route actually performs a database operation.
 export const pool: Pool = new Proxy({} as Pool, {
   get(_target, prop) {
     const real = getPool();
