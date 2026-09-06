@@ -10,6 +10,7 @@ const globalKey = '__genz_mysql_pool__';
 const globalStore = globalThis as typeof globalThis & { [globalKey]?: Pool };
 
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})$/;
+const LEGACY_ACTIVE_MEMBER_PREDICATE = /active=TRUE\s+AND\s+expires_at>=CURDATE\(\)/g;
 
 /**
  * MySQL DATETIME does not accept JavaScript's ISO `T...Z` representation as a
@@ -29,9 +30,19 @@ export function normalizeDbValue(value: unknown): unknown {
   return value;
 }
 
+/**
+ * Compatibility normalization for application SQL written before memberships
+ * became non-expiring. It is intentionally exact and only affects the old
+ * active-member predicate; explicit expiry checks elsewhere remain untouched.
+ */
+export function normalizeDbSql(sql: unknown): unknown {
+  if (typeof sql !== 'string') return sql;
+  return sql.replace(LEGACY_ACTIVE_MEMBER_PREDICATE, 'active=TRUE AND (expires_at IS NULL OR expires_at>=CURDATE())');
+}
+
 function normalizeDbArgs(args: unknown[]): unknown[] {
-  if (args.length < 2) return args;
-  return [args[0], normalizeDbValue(args[1])];
+  if (args.length < 2) return args.length === 1 ? [normalizeDbSql(args[0])] : args;
+  return [normalizeDbSql(args[0]), normalizeDbValue(args[1])];
 }
 
 function wrapConnection(connection: PoolConnection): PoolConnection {
