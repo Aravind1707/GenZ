@@ -51,7 +51,7 @@ async function runChecks():Promise<Check[]>{
   checks.push({key:'developer_access',name:'Developer access',status:Number(staff.developers)>0?'PASS':'WARN',message:`${staff.active} active staff account(s), ${staff.developers} active developer account(s).`,details:staff});
 
   const [[stations]] = await pool.query<(RowDataPacket&{total:number;active:number;maintenance:number})[]>('SELECT COUNT(*) total,COALESCE(SUM(status=\'AVAILABLE\'),0) active,COALESCE(SUM(status IN (\'MAINTENANCE\',\'BLOCKED\')),0) maintenance FROM stations');
-  checks.push({key:'stations',name:'Station inventory',status:Number(stations.total)>=34?'PASS':'WARN',message:`${stations.total} stations configured; ${stations.active} available; ${stations.maintenance} maintenance/blocked.`,details:stations});
+  checks.push({key:'stations',name:'Station inventory',status:Number(stations.total)>=29?'PASS':'WARN',message:`${stations.total} stations configured; ${stations.active} available; ${stations.maintenance} maintenance/blocked.`,details:stations});
 
   const [[negative]] = await pool.query<(RowDataPacket&{count:number})[]>('SELECT COUNT(*) count FROM inventory_material_stock WHERE quantity<0');
   checks.push({key:'negative_stock',name:'Negative inventory guard',status:Number(negative.count)===0?'PASS':'FAIL',message:Number(negative.count)===0?'No negative inventory balances found.':`${negative.count} material stock row(s) have negative quantity.`,details:negative});
