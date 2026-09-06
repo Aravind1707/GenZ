@@ -1,56 +1,74 @@
-name: genz-cafe-test
-
 services:
-  db:
-    image: mysql:8.4
+  mysql:
+    image: mysql:8.4.12
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: genz_test_root
-      MYSQL_DATABASE: genz_cafe_test
-      MYSQL_USER: genz_test
-      MYSQL_PASSWORD: genz_test
+      MYSQL_DATABASE: ${GENZ_DB_NAME:-genz_os}
+      MYSQL_USER: ${GENZ_DB_USER:-genz_test}
+      MYSQL_PASSWORD: ${GENZ_DB_PASSWORD:?Set GENZ_DB_PASSWORD in test environment}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in test environment}
     ports:
       - "127.0.0.1:3307:3306"
     volumes:
       - genz_test_mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 30s
+    networks: [genz_test]
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     restart: unless-stopped
+    init: true
     environment:
       NODE_ENV: production
       PORT: 3000
-      GENZ_DB_HOST: db
+      GENZ_DB_HOST: mysql
       GENZ_DB_PORT: 3306
-      GENZ_DB_USER: genz_test
-      GENZ_DB_PASSWORD: genz_test
-      GENZ_DB_NAME: genz_cafe_test
+      GENZ_DB_NAME: ${GENZ_DB_NAME:-genz_os}
+      GENZ_DB_USER: ${GENZ_DB_USER:-genz_test}
+      GENZ_DB_PASSWORD: ${GENZ_DB_PASSWORD}
+      GENZ_DB_POOL_SIZE: 5
       GENZ_DB_CONNECT_TIMEOUT_MS: 10000
       GENZ_DB_CONNECT_RETRIES: 30
       GENZ_DB_CONNECT_RETRY_DELAY_MS: 2000
-      JWT_SECRET: genz-local-test-secret-change-me
-      UPI_ID: test@upi
-      UPI_NAME: GenZ Local Test
-      GENZ_RUN_MIGRATIONS: "true"
+      GENZ_PUBLIC_BASE_URL: http://localhost:3001
+      GENZ_OWNER_REMOTE_ACCESS_ENABLED: false
+      GENZ_OWNER_REMOTE_ACCESS_MODE: VPN
+      GENZ_OTP_DEV_MODE: true
+      GENZ_RAZORPAY_KEY_ID: ""
+      GENZ_RAZORPAY_KEY_SECRET: ""
+      GENZ_RAZORPAY_WEBHOOK_SECRET: ""
+      GENZ_POS_PROVIDER: NONE
+      GENZ_POS_INTEGRATION_ENABLED: false
+      GENZ_POS_DYNAMIC_UPI_QR_ENABLED: false
+      GENZ_POS_CARD_ENABLED: false
+      GENZ_POS_AUTO_CONFIRM_ENABLED: false
+      GENZ_STAFF_INITIAL_USERNAME: owner
+      GENZ_STAFF_INITIAL_NAME: Owner
+      GENZ_STAFF_INITIAL_PASSWORD: ${GENZ_STAFF_INITIAL_PASSWORD:-ChangeMe_Test_Only_123!}
+      GENZ_TRUST_PROXY: false
+      GENZ_STATION_AGENT_SECRETS_JSON: '{}'
+      GENZ_RUN_MIGRATIONS: true
+      NODE_OPTIONS: --enable-source-maps
     ports:
       - "127.0.0.1:3001:3000"
     depends_on:
-      db:
+      mysql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 5s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
       timeout: 5s
-      retries: 30
+      retries: 12
       start_period: 30s
+    networks: [genz_test]
 
 volumes:
   genz_test_mysql:
+
+networks:
+  genz_test:
