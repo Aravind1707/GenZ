@@ -6,7 +6,7 @@ type Log={id:number;username:string|null;name:string|null;role:string|null;actio
 type Check={key:string;name:string;status:'PASS'|'WARN'|'FAIL';message:string;details?:unknown};
 type TestResponse={environment:string;destructiveActionsAllowed:boolean;checks:Check[];passed:number;warnings:number;failed:number};
 const title=(key:string)=>key.split('_').map(x=>x[0].toUpperCase()+x.slice(1)).join(' ');
-const statusClass=(s:Check['status'])=>s==='PASS'?'success':s==='FAIL'?'danger':'warning';
+const statusClass=(s:Check['status'])=>s==='PASS'?'green':s==='FAIL'?'red':'amber';
 
 export default function Developer(){
  const[features,setFeatures]=useState<Feature[]>([]),[logs,setLogs]=useState<Log[]>([]),[tests,setTests]=useState<TestResponse|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState('');
