@@ -3,7 +3,6 @@ import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDa
 const required = (name: string) => {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
 };
 
 const globalKey = '__genz_mysql_pool__';
@@ -88,7 +87,7 @@ export const pool: Pool = new Proxy({} as Pool, {
       return (...args: unknown[]) => (value as (...input: unknown[]) => unknown).apply(real, normalizeDbArgs(args));
     }
     if (prop === 'getConnection') {
-      return async (...args: unknown[]) => wrapConnection(await real.getConnection(...args));
+      return async () => wrapConnection(await real.getConnection());
     }
     return typeof value === 'function' ? value.bind(real) : value;
   },
