@@ -3,14 +3,11 @@ services:
     image: mysql:8.4.11
     restart: unless-stopped
     environment:
-      # Test-only credentials. These are intentionally non-production and may
-      # be overridden when a developer wants custom test credentials.
+      # Test-only defaults. These never come from the production .env.
       MYSQL_DATABASE: ${GENZ_TEST_DB_NAME:-genz_os}
       MYSQL_USER: ${GENZ_TEST_DB_USER:-genz_test}
       MYSQL_PASSWORD: ${GENZ_TEST_DB_PASSWORD:-genz_test}
       MYSQL_ROOT_PASSWORD: ${GENZ_TEST_MYSQL_ROOT_PASSWORD:-genz_test_root}
-    ports:
-      - "127.0.0.1:3307:3306"
     volumes:
       - genz_test_mysql:/var/lib/mysql
     healthcheck:
@@ -40,6 +37,8 @@ services:
       GENZ_PUBLIC_BASE_URL: http://localhost:3001
       GENZ_OWNER_REMOTE_ACCESS_ENABLED: false
       GENZ_OWNER_REMOTE_ACCESS_MODE: VPN
+      GENZ_OTP_MSG91_AUTHKEY: ""
+      GENZ_OTP_MSG91_SENDER_ID: ""
       GENZ_OTP_DEV_MODE: true
       GENZ_RAZORPAY_KEY_ID: ""
       GENZ_RAZORPAY_KEY_SECRET: ""
