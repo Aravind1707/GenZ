@@ -18,8 +18,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 COPY --from=build --chown=node:node /app ./
 RUN npm prune --omit=dev \
-  && chmod 0555 ./docker-entrypoint.sh \
   && find . -type f -not -path './node_modules/*' -exec chmod 0444 {} + \
+  && sed -i 's/\r$//' ./docker-entrypoint.sh \
+  && chmod 0555 ./docker-entrypoint.sh \
   && chmod 0555 .
 USER node
 EXPOSE 3000
