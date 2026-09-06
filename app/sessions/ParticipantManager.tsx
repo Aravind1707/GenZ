@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 
-type Participant={id:string;customerId?:string;charge:number;joinedAt:string;leftAt?:string};
+type Participant={id:string;customerId?:string;displayName:string;charge:number;joinedAt:string;leftAt?:string};
 type Customer={id:string;name:string;mobile:string;memberId?:string;member?:{active:true}};
 
 type Props={sessionId:string;onChanged?:()=>void};
