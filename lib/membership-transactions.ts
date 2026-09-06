@@ -4,22 +4,22 @@ import {transaction} from './mysql';
 import {assertDailyCloseOpen} from './daily-close-lock';
 
 export type MembershipPaymentMethod='CASH'|'UPI'|'CARD'|'RAZORPAY'|'OTHER';
+export type GovernmentIdType='AADHAAR'|'PAN'|'PASSPORT'|'DRIVING_LICENSE'|'VOTER_ID'|'OTHER';
 const id=(p:string)=>`${p}-${randomUUID()}`;
 const money=(n:number)=>Math.max(0,Math.round(n));
 const dateOnly=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'';
 
-export async function createMembership(input:{id?:string;name:string;mobile:string;tier:'REGULAR'|'GOLD'|'VIP';expiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
+export async function createMembership(input:{id:string;name:string;mobile:string;governmentIdType:GovernmentIdType;governmentIdNumber:string;expiresAt:string;amount:number;method:MembershipPaymentMethod;staffId:string}){
  return transaction(async c=>{
   await assertDailyCloseOpen(c);
-  const memberId=(input.id||`MEM-${randomUUID().replaceAll('-','').slice(0,16)}`).trim();
+  const memberId=input.id.trim();
   const expiresAt=dateOnly(input.expiresAt);
   const amount=money(Number(input.amount));
-  if(!expiresAt||!input.name.trim()||/^[0-9+() -]{7,20}$/.test(input.mobile.trim())===false)throw Error('INVALID_MEMBER_DETAILS');
-  if(!['REGULAR','GOLD','VIP'].includes(input.tier))throw Error('INVALID_TIER');
+  if(!/^GENZFAM\d{3}$/.test(memberId)||!expiresAt||!input.name.trim()||!/^[0-9+() -]{7,20}$/.test(input.mobile.trim()))throw Error('INVALID_MEMBER_DETAILS');
+  if(!['AADHAAR','PAN','PASSPORT','DRIVING_LICENSE','VOTER_ID','OTHER'].includes(input.governmentIdType)||input.governmentIdNumber.trim().length<3||input.governmentIdNumber.trim().length>120)throw Error('INVALID_GOVERNMENT_ID');
   if(!['CASH','UPI','CARD','RAZORPAY','OTHER'].includes(input.method))throw Error('INVALID_PAYMENT_METHOD');
   if(amount<0)throw Error('INVALID_MEMBERSHIP_AMOUNT');
-  if(!/^[-A-Za-z0-9_]{2,64}$/.test(memberId))throw Error('INVALID_MEMBER_ID');
-  await c.execute('INSERT INTO members(id,name,mobile,tier,expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,TRUE,NOW(3),NOW(3))',[memberId,input.name.trim(),input.mobile.trim(),input.tier,expiresAt]);
+  await c.execute('INSERT INTO members(id,name,mobile,government_id_type,government_id_number,expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,?,TRUE,NOW(3),NOW(3))',[memberId,input.name.trim(),input.mobile.trim(),input.governmentIdType,input.governmentIdNumber.trim(),expiresAt]);
   if(amount>0){
    const txId=id('MTX');
    await c.execute('INSERT INTO membership_transactions(id,member_id,type,amount,method,status,previous_expires_at,new_expires_at,created_by,created_at) VALUES(?,?,?,?,?,\'CAPTURED\',?,?,?,NOW(3))',[txId,memberId,'NEW',amount,input.method,null,expiresAt,input.staffId]);
