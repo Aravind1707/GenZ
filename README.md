@@ -48,7 +48,7 @@ The canonical migration directory now contains numbered migrations through **048
 docker compose up -d --build
 ```
 
-The application starts on port `3000`. MySQL remains private to the Compose network and persists in `genz_mysql`. The app waits for MySQL health and applies migrations automatically. Do **not** expose port 3306 to the LAN/Internet.
+The application starts on port `3000`. MySQL remains private to the Compose network and persists in `genz_mysql`. The app waits for MySQL health and applies migrations automatically. **Do not expose port 3306 to the LAN/Internet.**
 
 Verify readiness:
 
@@ -78,6 +78,163 @@ npm run build
 npm run db:migrate
 npm start
 ```
+
+## Windows PC — native development / local run
+
+You can run GenZ OS directly on Windows without Docker for development, debugging, or a local café-admin installation. The repository currently requires **Node.js 24.x** (`>=24.20.0 <25`) and **npm 11.x** (`>=11.19.0 <12`).
+
+### 1. Install prerequisites
+
+Install these on the Windows PC:
+
+- **Git for Windows**
+- **Node.js 24 LTS** with npm 11.x
+- **MySQL 8.4** if you are running MySQL natively
+- Alternatively, install **Docker Desktop** and use the Docker Compose deployment above for MySQL
+
+Verify from **PowerShell** or **Command Prompt**:
+
+```powershell
+node --version
+npm --version
+git --version
+mysql --version
+```
+
+The project should report Node `24.x` and npm `11.x`. TypeScript is installed locally by the project, so do **not** install TypeScript globally. The project pins TypeScript `6.0.3` because the current Next.js ESLint toolchain requires the TypeScript 6 compiler API.
+
+### 2. Get the project
+
+```powershell
+git clone https://github.com/Aravind1707/GenZ.git
+cd GenZ
+```
+
+If the repository is already cloned:
+
+```powershell
+git pull origin main
+```
+
+### 3. Configure environment variables
+
+Create the local environment file from the example:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env` and configure at minimum the MySQL connection, staff initial password, and any provider credentials required for the features you want to test. Never commit `.env` or real secrets.
+
+### 4. Install dependencies
+
+```powershell
+npm install
+```
+
+If Windows reports that a package script or executable cannot be found after changing Node versions, close and reopen PowerShell, then run `npm install` again.
+
+### 5. Start MySQL
+
+For native MySQL, make sure the MySQL 8.4 service is running and that the database/user/password in `.env` match the local MySQL configuration.
+
+If you prefer Docker only for MySQL, from the repository root you can start the database service with:
+
+```powershell
+docker compose up -d mysql
+```
+
+Do not publish MySQL port `3306` to the LAN or Internet.
+
+### 6. Validate the installation
+
+Run the complete test suite:
+
+```powershell
+npm test
+```
+
+Then run the TypeScript compiler and linter:
+
+```powershell
+npx tsc --noEmit
+npm run lint
+```
+
+Build the production application:
+
+```powershell
+npm run build
+```
+
+### 7. Apply database migrations
+
+```powershell
+npm run db:migrate
+```
+
+### 8. Start GenZ OS
+
+For development with hot reload:
+
+```powershell
+npm run dev
+```
+
+For the production build:
+
+```powershell
+npm start
+```
+
+Then open the application in a browser at:
+
+```text
+http://localhost:3000
+```
+
+For a café LAN deployment, bind the reverse proxy/public URL and firewall rules according to the production environment. Do not expose MySQL or the station-agent port to WAN.
+
+### Windows command summary
+
+From a fresh clone, the usual development sequence is:
+
+```powershell
+git clone https://github.com/Aravind1707/GenZ.git
+cd GenZ
+Copy-Item .env.example .env
+npm install
+npm test
+npx tsc --noEmit
+npm run lint
+npm run build
+npm run db:migrate
+npm run dev
+```
+
+For a production-style local run, replace the final `npm run dev` with:
+
+```powershell
+npm start
+```
+
+### Windows troubleshooting
+
+**`node` or `npm` is not recognized:** close and reopen the terminal after installing Node.js, then run `node --version` and `npm --version` again.
+
+**Wrong Node/npm version:** install Node.js 24 LTS or use a Windows Node version manager, switch to Node 24, reopen the terminal, and run `npm install` again.
+
+**`npm run lint` reports a TypeScript 7 compatibility error:** make sure the checkout contains the pinned project dependency `typescript: 6.0.3`, remove stale dependencies if necessary, and reinstall:
+
+```powershell
+Remove-Item -Recurse -Force node_modules
+npm install
+npm run lint
+```
+
+**PowerShell blocks a `.ps1` script:** use the repository scripts only from a trusted local checkout. If Windows execution policy blocks a script that you explicitly intend to run, review the machine's PowerShell policy with your administrator rather than broadly disabling security controls.
+
+**Port 3000 is already in use:** stop the process using the port or run the application behind the configured reverse proxy/alternate local port as appropriate. Do not expose internal database or station-agent ports just to work around a web-port conflict.
 
 ## Backup / restore
 
