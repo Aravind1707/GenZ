@@ -1,6 +1,6 @@
 param(
   [string]$InstallDir = 'C:\GenZ',
-  [string]$NodeMajor = '20'
+  [int]$NodeMajor = 24
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,7 +13,12 @@ Require-Command node
 Require-Command npm
 
 $nodeVersion = (node --version).TrimStart('v')
-if ([int]($nodeVersion.Split('.')[0]) -lt [int]$NodeMajor) { throw "Node.js $NodeMajor+ is required. Found $nodeVersion." }
+$nodeMajorFound = [int]($nodeVersion.Split('.')[0])
+if ($nodeMajorFound -ne $NodeMajor) { throw "Node.js $NodeMajor.x is required. Found $nodeVersion." }
+
+$npmVersion = (npm --version).Trim()
+$npmMajor = [int]($npmVersion.Split('.')[0])
+if ($npmMajor -lt 11 -or $npmMajor -ge 12) { throw "npm 11.x is required. Found $npmVersion." }
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Set-Location $InstallDir
@@ -27,10 +32,11 @@ if (-not (Test-Path '.git')) {
   git pull --ff-only origin main
 }
 
-npm install
+npm install --no-audit --no-fund
+npm run test
 npm run build
 
 Write-Host ''
-Write-Host 'GenZ build completed successfully.'
+Write-Host 'GenZ production build completed successfully.'
 Write-Host "Install directory: $InstallDir"
-Write-Host 'Next: configure the production .env.local, run npm run db:migrate, then use register-genz-service.ps1 as Administrator.'
+Write-Host 'Next: configure the production .env.local, verify MySQL credentials, then use register-genz-service.ps1 as Administrator.'
