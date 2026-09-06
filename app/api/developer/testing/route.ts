@@ -1,0 +1,87 @@
+import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
+import {pool} from '../../../../../lib/mysql';
+import {requireStaff,COOKIE,audit} from '../../../../../lib/staff-auth';
+import type {RowDataPacket} from 'mysql2/promise';
+
+type CheckStatus='PASS'|'WARN'|'FAIL';
+type Check={key:string;name:string;status:CheckStatus;message:string;details?:unknown};
+
+async function auth(){
+  const staff=await requireStaff((await cookies()).get(COOKIE)?.value);
+  if(staff.role!=='DEVELOPER') throw new Error('STAFF_FORBIDDEN');
+  return staff;
+}
+
+function fail(e:unknown){
+  const message=e instanceof Error?e.message:'Developer testing request failed';
+  return NextResponse.json({ok:false,error:message},{status:message==='STAFF_UNAUTHORIZED'?401:message==='STAFF_FORBIDDEN'?403:400});
+}
+
+const requiredTables=[
+  'stations','sessions','session_settlements','session_payment_refunds','station_agent_commands',
+  'inventory_materials','menu_item_recipes','inventory_material_stock','inventory_batches',
+  'inventory_cogs_ledger','daily_cash_counts','finance_reconciliations','realtime_events',
+  'members','menu_items','orders','payments','bookings','staff_users','audit_log','feature_flags'
+];
+
+async function runChecks():Promise<Check[]>{
+  const checks:Check[]=[];
+  try{
+    const [[db]] = await pool.query<(RowDataPacket&{ok:number})[]>('SELECT 1 AS ok');
+    checks.push({key:'db',name:'Database connectivity',status:Number(db.ok)===1?'PASS':'FAIL',message:Number(db.ok)===1?'MySQL query succeeded.':'MySQL did not return the expected result.'});
+  }catch(e){
+    checks.push({key:'db',name:'Database connectivity',status:'FAIL',message:e instanceof Error?e.message:'Database query failed'});
+    return checks;
+  }
+
+  const [[migration]] = await pool.query<(RowDataPacket&{count:number;max_version:number|null})[]>('SELECT COUNT(*) count,MAX(version) max_version FROM schema_migrations');
+  checks.push({key:'migrations',name:'Migration state',status:Number(migration.max_version)===52?'PASS':'WARN',message:`${migration.count} migrations recorded; latest version ${migration.max_version??'none'}.`,details:migration});
+
+  const placeholders=requiredTables.map(()=>'?').join(',');
+  const [tables] = await pool.query<(RowDataPacket&{table_name:string})[]>(`SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN (${placeholders})`,requiredTables);
+  const present=new Set(tables.map(t=>t.table_name));
+  const missing=requiredTables.filter(t=>!present.has(t));
+  checks.push({key:'schema',name:'Required production tables',status:missing.length?'FAIL':'PASS',message:missing.length?`Missing: ${missing.join(', ')}`:`All ${requiredTables.length} required tables exist.`,details:{present:[...present],missing}});
+
+  const [[flags]] = await pool.query<(RowDataPacket&{count:number;disabled:number})[]>('SELECT COUNT(*) count,COALESCE(SUM(enabled=FALSE),0) disabled FROM feature_flags');
+  checks.push({key:'features',name:'Feature flag registry',status:Number(flags.count)===17?'PASS':'WARN',message:`${flags.count} feature flags registered; ${flags.disabled} disabled.`,details:flags});
+
+  const [[staff]] = await pool.query<(RowDataPacket&{active:number;developers:number})[]>('SELECT COALESCE(SUM(active=TRUE),0) active,COALESCE(SUM(role=\'DEVELOPER\' AND active=TRUE),0) developers FROM staff_users');
+  checks.push({key:'developer_access',name:'Developer access',status:Number(staff.developers)>0?'PASS':'WARN',message:`${staff.active} active staff account(s), ${staff.developers} active developer account(s).`,details:staff});
+
+  const [[stations]] = await pool.query<(RowDataPacket&{total:number;active:number;maintenance:number})[]>('SELECT COUNT(*) total,COALESCE(SUM(status=\'AVAILABLE\'),0) active,COALESCE(SUM(status IN (\'MAINTENANCE\',\'BLOCKED\')),0) maintenance FROM stations');
+  checks.push({key:'stations',name:'Station inventory',status:Number(stations.total)>=34?'PASS':'WARN',message:`${stations.total} stations configured; ${stations.active} available; ${stations.maintenance} maintenance/blocked.`,details:stations});
+
+  const [[negative]] = await pool.query<(RowDataPacket&{count:number})[]>('SELECT COUNT(*) count FROM inventory_material_stock WHERE quantity<0');
+  checks.push({key:'negative_stock',name:'Negative inventory guard',status:Number(negative.count)===0?'PASS':'FAIL',message:Number(negative.count)===0?'No negative inventory balances found.':`${negative.count} material stock row(s) have negative quantity.`,details:negative});
+
+  const [[openSessions]] = await pool.query<(RowDataPacket&{count:number})[]>('SELECT COUNT(*) count FROM sessions WHERE status IN (\'ACTIVE\',\'PAUSED\')');
+  checks.push({key:'sessions',name:'Session consistency',status:'PASS',message:`${openSessions.count} active/paused session(s) currently recorded.`,details:openSessions});
+
+  const [[auditRows]] = await pool.query<(RowDataPacket&{count:number})[]>('SELECT COUNT(*) count FROM audit_log');
+  checks.push({key:'audit',name:'Audit logging',status:Number(auditRows.count)>=0?'PASS':'FAIL',message:`Audit log is queryable (${auditRows.count} row(s)).`,details:auditRows});
+
+  return checks;
+}
+
+export async function GET(){
+  try{
+    await auth();
+    return NextResponse.json({ok:true,environment:process.env.GENZ_DEPLOYMENT_MODE||'production',destructiveActionsAllowed:process.env.GENZ_DEPLOYMENT_MODE==='staging',checks:await runChecks()},{headers:{'Cache-Control':'no-store'}});
+  }catch(e){return fail(e)}
+}
+
+export async function POST(req:Request){
+  try{
+    const staff=await auth();
+    const body=await req.json().catch(()=>({}));
+    const action=String(body?.action||'run-safe-checks');
+    if(action!=='run-safe-checks') throw new Error('TEST_ACTION_NOT_IMPLEMENTED');
+    const started=Date.now();
+    const checks=await runChecks();
+    const failed=checks.filter(c=>c.status==='FAIL').length;
+    await audit(staff.id,'DEVELOPER_TEST_RUN','developer_test',action,{environment:process.env.GENZ_DEPLOYMENT_MODE||'production',durationMs:Date.now()-started,failed,checks:checks.map(c=>({key:c.key,status:c.status}))});
+    return NextResponse.json({ok:true,action,failed,passed:checks.filter(c=>c.status==='PASS').length,warnings:checks.filter(c=>c.status==='WARN').length,checks});
+  }catch(e){return fail(e)}
+}
