@@ -29,7 +29,7 @@ irm https://raw.githubusercontent.com/Aravind1707/GenZ/main/deploy/windows/insta
 
 Or clone the repository manually and run the script from `deploy/windows`.
 
-The installer requires Node.js 20+ LTS, npm and Git, installs dependencies and runs the production build.
+The installer requires **Node.js 24.x and npm 11.x**, matching the versions declared by the project. It installs dependencies, runs the full test suite and creates the production build.
 
 ## 4. Configure production secrets
 
@@ -54,14 +54,16 @@ Add the real MSG91/Razorpay/station-agent secrets required by the enabled featur
 
 ## 5. Database
 
-Ensure MySQL is running locally and run:
+Ensure MySQL is running locally and verify that `GENZ_DB_NAME`, `GENZ_DB_USER` and `GENZ_DB_PASSWORD` match the database account.
+
+The Windows service wrapper automatically loads `.env.local` and runs `npm run db:migrate` before every application start. You can also run it manually for a first-time check:
 
 ```powershell
 cd C:\GenZ
 npm run db:migrate
 ```
 
-The migration must finish successfully before starting the app.
+The migration runner always uses `GENZ_DB_NAME` from the connection. Legacy `USE genz_os` / database-creation statements in migration files are neutralized so a test database cannot accidentally be redirected to the production database name.
 
 ## 6. Start GenZ at boot
 
@@ -70,7 +72,7 @@ cd C:\GenZ
 .\deploy\windows\register-genz-service.ps1
 ```
 
-The script registers a SYSTEM scheduled task named `GenZOS` and starts `next start` on port 3000.
+The script registers a SYSTEM scheduled task named `GenZOS` and starts the application on port 3000. The wrapper loads the production environment, migrates the database, then starts `next start`.
 
 ## 7. HTTPS reverse proxy
 
