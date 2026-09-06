@@ -12,7 +12,7 @@ export async function GET(req:Request){try{await auth('members:read');const id=n
 export async function POST(req:Request){try{const actor=await auth('members:write');const b=await req.json();
  if(b.type==='NEW'){
   if(actor.role!=='OWNER')throw Error('STAFF_FORBIDDEN');
-  const result=await createMembership({id:String(b.id||''),name:String(b.name||''),mobile:String(b.mobile||''),governmentIdType:b.governmentIdType,governmentIdNumber:String(b.governmentIdNumber||''),expiresAt:String(b.expiresAt||''),amount:Number(b.amount||0),method:b.method,staffId:actor.id});
+  const result=await createMembership({id:String(b.id||''),name:String(b.name||''),mobile:String(b.mobile||''),governmentIdType:b.governmentIdType,governmentIdNumber:String(b.governmentIdNumber||''),amount:Number(b.amount||0),method:b.method,staffId:actor.id});
   await audit(actor.id,'MEMBER_CREATED','MEMBER',result.memberId,{transactionId:result.transactionId,amount:result.amount,method:result.method});
   return NextResponse.json({ok:true,result},{status:201});
  }
