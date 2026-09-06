@@ -27,14 +27,21 @@ GenZ OS is a LAN-first gaming-café OS for ~20 PCs, 5 PS5, 2 PS4, 2 PSVR and 2 M
 - Added persisted `feature_flags` table with 17 named feature switches covering Dashboard, Sessions, Bookings, Food Orders, Kitchen, Inventory, Finance, Payments, Members, Stations, Receipts, Staff Management, Admin Configuration, Customer Portal, Station Agent, OTP and Audit Logs.
 - Added `lib/features.ts` for feature reads, writes and audit attribution.
 - Added `/developer` Developer Console with simple enable/disable buttons and latest 500 audit events.
-- Added `/api/developer/features` for owner/developer feature control and audit-log viewing.
-- Added `/api/features` for safe UI feature-state discovery.
-- Staff navigation now hides disabled operational modules and direct staff navigation shows a clear Feature Disabled state instead of loading the disabled module UI.
-- Added a Developer staff role to the database migration and owner staff-management workflow. Developer accounts are intended for engineering/maintenance access and are not Owner accounts.
-- Added `docs/OWNERS_MANUAL.md` with detailed operating procedures for the complete current system, including developer controls, audit logs, sessions, bookings, food, inventory, payments, finance, staff, stations, deployment and troubleshooting.
+- `/api/developer/features` is now **Developer-only** for feature control and audit-log viewing.
+- `/api/features` now requires an authenticated staff session before exposing feature state.
+- Admin catalog/configuration APIs now accept OWNER and DEVELOPER; operational Manager access remains constrained by RBAC.
+
+### Staff security hardening — latest
+- Staff login now writes the cryptographically signed role cookie returned by `loginStaff()` instead of a raw role value.
+- Middleware verifies the role cookie with HMAC/WebCrypto before using it for page-level role gating.
+- Staff Management uses the canonical `/api/admin/staff` endpoint instead of the stale `/api/staff` path.
+- Staff API delegation is explicit: OWNER can create/manage MANAGER accounts only; DEVELOPER can create/manage all staff roles.
+- Staff API rejects OWNER attempts to create OWNER/DEVELOPER accounts, rejects unauthorized target-role changes, and prevents self-deactivation/self-demotion.
+- Staff changes remain audit logged.
+- Staff UI is role-aware: Developer can choose OWNER/MANAGER/DEVELOPER; Owner can create MANAGER only and cannot disable their own account.
 
 ### Important implementation boundary
-The Developer Console is now the central persisted control plane and the staff UI is feature-aware. Individual backend business APIs should continue to be wired to `requireFeature()` during the ongoing A-to-Z integration audit so a disabled capability is also fail-closed at the server transaction boundary. Do not treat UI hiding alone as sufficient production enforcement.
+The Developer Console is the central persisted control plane and the staff UI is feature-aware. Individual backend business APIs still need to be wired to `requireFeature()` during the ongoing A-to-Z integration audit so a disabled capability is also fail-closed at the server transaction boundary. Do not treat UI hiding alone as sufficient production enforcement.
 
 ## Deploy-ready software baseline
 
@@ -44,7 +51,7 @@ Completed software areas include customer OTP/security, membership/pricing, food
 
 ## Current validation status
 
-Do not call the project 100% production-accepted yet. The previous CI run had substantive jobs cancelled before validation; CodeQL completed successfully. After the latest feature-control changes, fresh isolated staging, TypeScript/build, unit, integration, Docker and full end-to-end acceptance must be rerun.
+**Do not call the project 100% production-accepted yet.** The latest code changes above have been committed, but fresh isolated staging, TypeScript/build, unit, integration, Docker and full end-to-end acceptance still need to be run against this exact main revision. CodeQL had previously completed successfully, but that does not substitute for the current full validation gate.
 
 Required staging sequence:
 1. `docker compose -f docker-compose.test.yml down -v --remove-orphans`
@@ -54,7 +61,8 @@ Required staging sequence:
 5. verify latest migration = 52
 6. run integration/concurrency QA
 7. exercise customer → gaming → food → payment → receipt → finance → close
-8. exercise Developer Console and audit attribution
+8. exercise Developer Console, staff role matrix and audit attribution
+9. run Razorpay Test Mode API smoke only when test credentials are supplied locally; never commit secrets
 
 ## Remaining A-to-Z audit gate
 
