@@ -1,4 +1,5 @@
 import {NextResponse} from 'next/server';
+import {cookies} from 'next/headers';
 import {findMember,listMembers,createMember,updateMember} from '../../../lib/members';
 import {COOKIE,requireStaff,audit} from '../../../lib/staff-auth';
 export const dynamic='force-dynamic';
