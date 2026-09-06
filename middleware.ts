@@ -1,59 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
-
-const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members','/inventory','/stations','/admin'];
-const unsafeMethods=new Set(['POST','PUT','PATCH','DELETE']);
-const requestIdPattern=/^[A-Za-z0-9._:-]{1,128}$/;
-const MAX_BODY_BYTES=1_048_576;
-
-function sameOriginRequest(request:NextRequest){
-  const origin=request.headers.get('origin')?.trim();
-  if(!origin)return true;
-  let expectedOrigin=request.nextUrl.origin;
-  const configured=process.env.GENZ_PUBLIC_BASE_URL?.trim();
-  if(configured){try{expectedOrigin=new URL(configured).origin}catch{}}
-  try{return new URL(origin).origin===expectedOrigin}catch{return false}
-}
-
-export function middleware(request:NextRequest){
-  const suppliedRequestId=request.headers.get('x-request-id')?.trim();
-  const requestId=suppliedRequestId&&requestIdPattern.test(suppliedRequestId)?suppliedRequestId:crypto.randomUUID();
-  const path=request.nextUrl.pathname;
-
-  if(path.startsWith('/api/')&&unsafeMethods.has(request.method)){
-    const contentLength=Number(request.headers.get('content-length')||0);
-    if(contentLength>MAX_BODY_BYTES){
-      const response=NextResponse.json({ok:false,error:'Request body too large'},{status:413});
-      response.headers.set('x-request-id',requestId);
-      return response;
-    }
-  }
-
-  if(unsafeMethods.has(request.method)&&request.headers.has('origin')&&!sameOriginRequest(request)){
-    const response=NextResponse.json({ok:false,error:'Cross-origin request blocked'},{status:403});
-    response.headers.set('x-request-id',requestId);
-    return response;
-  }
-
-  if(path.startsWith('/staff-login')||path.startsWith('/api/staff')||path.startsWith('/api/customer')||path.startsWith('/customer')){
-    const response=NextResponse.next();
-    response.headers.set('x-request-id',requestId);
-    return response;
-  }
-
-  if(protectedPaths.some(p=>p==='/'?path==='/':path===p||path.startsWith(`${p}/`))){
-    if(!request.cookies.get('genz_staff')?.value){
-      const url=request.nextUrl.clone();
-      url.pathname='/staff-login';
-      url.searchParams.set('next',path);
-      const response=NextResponse.redirect(url);
-      response.headers.set('x-request-id',requestId);
-      return response;
-    }
-  }
-
-  const response=NextResponse.next();
-  response.headers.set('x-request-id',requestId);
-  return response;
-}
-
-export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/inventory/:path*','/stations/:path*','/admin/:path*','/api/:path*']};
+const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members','/inventory','/stations','/admin','/developer'];
+const roleCookie='genz_staff_role';const unsafeMethods=new Set(['POST','PUT','PATCH','DELETE']);const requestIdPattern=/^[A-Za-z0-9._:-]{1,128}$/;const MAX_BODY_BYTES=1_048_576;
+function sameOriginRequest(request:NextRequest){const origin=request.headers.get('origin')?.trim();if(!origin)return true;let expectedOrigin=request.nextUrl.origin;const configured=process.env.GENZ_PUBLIC_BASE_URL?.trim();if(configured){try{expectedOrigin=new URL(configured).origin}catch{}}try{return new URL(origin).origin===expectedOrigin}catch{return false}}
+function roleAllowed(path:string,role:string){if(path.startsWith('/developer'))return role==='DEVELOPER';if(path==='/staff'||path.startsWith('/staff/'))return role==='OWNER'||role==='DEVELOPER';if(path==='/admin'||path.startsWith('/admin/'))return role==='OWNER'||role==='DEVELOPER';return ['OWNER','MANAGER','DEVELOPER'].includes(role)}
+export function middleware(request:NextRequest){const supplied=request.headers.get('x-request-id')?.trim();const requestId=supplied&&requestIdPattern.test(supplied)?supplied:crypto.randomUUID();const path=request.nextUrl.pathname;if(path.startsWith('/api/')&&unsafeMethods.has(request.method)){const contentLength=Number(request.headers.get('content-length')||0);if(contentLength>MAX_BODY_BYTES){const response=NextResponse.json({ok:false,error:'Request body too large'},{status:413});response.headers.set('x-request-id',requestId);return response}}if(unsafeMethods.has(request.method)&&request.headers.has('origin')&&!sameOriginRequest(request)){const response=NextResponse.json({ok:false,error:'Cross-origin request blocked'},{status:403});response.headers.set('x-request-id',requestId);return response}if(path.startsWith('/staff-login')||path.startsWith('/api/staff')||path.startsWith('/api/customer')||path.startsWith('/customer')){const response=NextResponse.next();response.headers.set('x-request-id',requestId);return response}if(protectedPaths.some(p=>p==='/'?path==='/':path===p||path.startsWith(`${p}/`))){const token=request.cookies.get('genz_staff')?.value;const role=request.cookies.get(roleCookie)?.value;if(!token||!role){const url=request.nextUrl.clone();url.pathname='/staff-login';url.searchParams.set('next',path);const response=NextResponse.redirect(url);response.headers.set('x-request-id',requestId);return response}if(!roleAllowed(path,role)){const response=NextResponse.redirect(new URL('/',request.url));response.headers.set('x-request-id',requestId);return response}}const response=NextResponse.next();response.headers.set('x-request-id',requestId);return response}
+export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/inventory/:path*','/stations/:path*','/admin/:path*','/developer/:path*','/api/:path*']};
