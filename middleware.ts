@@ -1,9 +1,9 @@
 import {NextRequest,NextResponse} from 'next/server';
 
-const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members','/inventory','/stations'];
+const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members','/inventory','/stations','/admin'];
 const unsafeMethods=new Set(['POST','PUT','PATCH','DELETE']);
 const requestIdPattern=/^[A-Za-z0-9._:-]{1,128}$/;
-const MAX_BODY_BYTES=1_048_576; // 1MB ceiling for any API route without its own tighter limit
+const MAX_BODY_BYTES=1_048_576;
 
 function sameOriginRequest(request:NextRequest){
   const origin=request.headers.get('origin')?.trim();
@@ -56,4 +56,4 @@ export function middleware(request:NextRequest){
   return response;
 }
 
-export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/inventory/:path*','/stations/:path*','/api/:path*']};
+export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/inventory/:path*','/stations/:path*','/admin/:path*','/api/:path*']};
