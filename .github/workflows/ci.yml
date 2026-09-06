@@ -20,7 +20,20 @@ jobs:
         with:
           node-version: 24.20.0
       - run: npm install
-      - run: npm test
+      - name: Run test suite
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee unit-test.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-unit-test-diagnostics
+          path: unit-test.log
+          retention-days: 14
       - name: TypeScript validation
         run: npx tsc --noEmit
       - name: ESLint
@@ -101,12 +114,17 @@ jobs:
           npm audit --audit-level=high
       - name: Package signature/provenance audit
         run: npm audit signatures > security/npm-signatures.txt || true
-      - name: Upload dependency audit
+      - name: Source security contract checks
+        shell: bash
+        run: |
+          set +e
+          npm run test:qa 2>&1 | tee security/qa-contracts.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - name: Upload security diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: genz-security-audit
+          name: genz-security-diagnostics
           path: security/
           retention-days: 14
-      - name: Source security contract checks
-        run: npm run test:qa
