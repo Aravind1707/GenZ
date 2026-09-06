@@ -15,5 +15,12 @@ export async function POST(request:Request){
       return response;
     }
     return NextResponse.json({ok:false,error:'Invalid request'},{status:400});
-  }catch(e){const message=e instanceof Error?e.message:'';if(message==='Too many OTP requests. Try again later'||message==='Too many OTP verification attempts. Try again later')return NextResponse.json({ok:false,error:'Too many attempts. Try again later.'},{status:429});return NextResponse.json({ok:false,error:'Unable to process login request'},{status:400});}
+  }catch(e){
+    const message=e instanceof Error?e.message:'Unable to process login request';
+    if(message==='Too many OTP requests. Try again later'||message==='Too many OTP verification attempts. Try again later')return NextResponse.json({ok:false,error:'Too many attempts. Try again later.'},{status:429});
+    const publicMessages=new Set(['Invalid mobile number','Please wait before requesting another OTP','OTP expired or invalid','Invalid verification request','OTP delivery failed','OTP provider is not configured']);
+    if(publicMessages.has(message))return NextResponse.json({ok:false,error:message},{status:400});
+    console.error('[customer-auth]',message);
+    return NextResponse.json({ok:false,error:process.env.NODE_ENV==='production'?'Unable to process login request':`Unable to process login request: ${message}`},{status:400});
+  }
 }
