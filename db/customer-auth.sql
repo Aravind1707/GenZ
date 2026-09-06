@@ -34,26 +34,4 @@ CREATE TABLE IF NOT EXISTS customer_sessions (
   INDEX idx_customer_sessions_expiry (expires_at)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS gaming_rates (
-  id VARCHAR(64) NOT NULL PRIMARY KEY,
-  station_type ENUM('PC','PS5','MOZA') NOT NULL,
-  pc_tier ENUM('NORMAL','PREMIUM') NULL,
-  label VARCHAR(100) NOT NULL,
-  specs TEXT NULL,
-  regular_price BIGINT UNSIGNED NOT NULL,
-  member_price BIGINT UNSIGNED NOT NULL,
-  unit_label VARCHAR(40) NOT NULL DEFAULT 'per hour',
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at DATETIME(3) NOT NULL,
-  updated_at DATETIME(3) NOT NULL,
-  INDEX idx_gaming_rates_active (active,station_type,pc_tier)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS member_price_rules (
-  id VARCHAR(64) NOT NULL PRIMARY KEY,
-  member_tier ENUM('REGULAR','GOLD','VIP') NOT NULL,
-  category VARCHAR(100) NOT NULL,
-  discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  UNIQUE KEY uq_member_price_rule (member_tier,category)
-) ENGINE=InnoDB;
+-- Current pricing is stored in gaming_rates and gaming_price_packages by migration 049.
