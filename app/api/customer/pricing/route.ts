@@ -16,8 +16,7 @@ export async function GET(){
     mobile:customer.mobile,
     name:customer.name,
     memberId:customer.member_id,
-    memberTier:customer.member_tier,
-    memberExpires:customer.member_expires,
+    memberExpires:null,
    }:null,
    pricing,
   },{headers:{'Cache-Control':'private,no-store'}});
