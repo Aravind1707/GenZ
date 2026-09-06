@@ -2,15 +2,23 @@ USE genz_os;
 
 -- Membership is one product: there are no customer membership tiers and no required expiry date.
 UPDATE members SET tier='REGULAR' WHERE tier IS NULL OR tier NOT IN ('REGULAR','GOLD','VIP');
-ALTER TABLE members
-  ADD COLUMN IF NOT EXISTS government_id_type VARCHAR(40) NULL AFTER mobile,
-  ADD COLUMN IF NOT EXISTS government_id_number VARCHAR(120) NULL AFTER government_id_type,
-  MODIFY COLUMN expires_at DATE NULL;
+ALTER TABLE members MODIFY COLUMN expires_at DATE NULL;
 
-ALTER TABLE members DROP INDEX IF EXISTS uq_members_government_id;
-ALTER TABLE members ADD UNIQUE KEY uq_members_government_id(government_id_type,government_id_number);
-ALTER TABLE members DROP COLUMN IF EXISTS tier;
-ALTER TABLE session_participants DROP COLUMN IF EXISTS member_tier;
+SET @has_gov_type := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='members' AND column_name='government_id_type');
+SET @sql := IF(@has_gov_type=0,'ALTER TABLE members ADD COLUMN government_id_type VARCHAR(40) NULL AFTER mobile','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @has_gov_number := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='members' AND column_name='government_id_number');
+SET @sql := IF(@has_gov_number=0,'ALTER TABLE members ADD COLUMN government_id_number VARCHAR(120) NULL AFTER government_id_type','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @has_gov_index := (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='members' AND index_name='uq_members_government_id');
+SET @sql := IF(@has_gov_index=0,'ALTER TABLE members ADD UNIQUE KEY uq_members_government_id(government_id_type,government_id_number)','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @has_tier := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='members' AND column_name='tier');
+SET @sql := IF(@has_tier=1,'ALTER TABLE members DROP COLUMN tier','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @has_participant_tier := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='session_participants' AND column_name='member_tier');
+SET @sql := IF(@has_participant_tier=1,'ALTER TABLE session_participants DROP COLUMN member_tier','SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 DROP TABLE IF EXISTS member_price_rules;
 
 CREATE TABLE IF NOT EXISTS gaming_price_packages (
