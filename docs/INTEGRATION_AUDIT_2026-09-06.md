@@ -35,11 +35,11 @@ Added static checks for the DB datetime boundary, active-membership semantics, a
 
 ## Validation status
 
-The changes were committed directly to `main`. GitHub Actions was automatically triggered for commit `246b4052fa92a4e80009f0e02dbc7c058ea9e75d`; at audit time the GenZ CI run was pending and CodeQL was in progress. Therefore this audit does **not** claim that the full CI or Docker/MySQL staging run has completed successfully yet.
+All audit changes are committed directly to `main`. The first unit-test commit (`246b4052...`) triggered GenZ CI and CodeQL; at the time checked, CI was pending and CodeQL was in progress. Subsequent audit commits changed the DB boundary, session membership query and QA contracts, so the earlier run cannot be treated as validation of the final audited state. The latest commit will trigger a fresh workflow run. This audit therefore does **not** claim that the final CI or Docker/MySQL staging run has completed successfully yet.
 
 ## Remaining acceptance gate
 
-After CI completes, perform a fresh staging verification with a clean test database and exercise the complete cross-module flow:
+After the final CI run completes, perform a fresh staging verification with a clean test database and exercise the complete cross-module flow:
 
 `customer OTP -> membership recognition -> booking/check-in -> session start -> session extension/pause/end -> gaming billing -> food order -> kitchen -> payment -> receipt -> finance -> daily close`
 
