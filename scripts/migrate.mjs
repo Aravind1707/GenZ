@@ -104,7 +104,10 @@ try {
     if (applied.has(version)) continue;
     console.log(`Applying ${file}`);
     await executeSql(connection, await fs.readFile(path.join(dir, file), 'utf8'), file);
-    await connection.query('INSERT INTO schema_migrations(version,applied_at) VALUES(?,NOW(3))', [version]);
+    // Historical migration files record themselves in schema_migrations. Keep
+    // this idempotent so older migrations and newer runner-managed migrations
+    // can coexist without duplicate-primary-key failures.
+    await connection.query('INSERT INTO schema_migrations(version,applied_at) VALUES(?,NOW(3)) ON DUPLICATE KEY UPDATE applied_at=applied_at', [version]);
     applied.add(version);
   }
   console.log(`GenZ MySQL migrations complete. Database: ${config.database}`);
