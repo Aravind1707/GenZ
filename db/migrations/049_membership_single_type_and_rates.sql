@@ -1,10 +1,11 @@
 USE genz_os;
 
--- Membership is one product: there are no customer membership tiers.
+-- Membership is one product: there are no customer membership tiers and no required expiry date.
 UPDATE members SET tier='REGULAR' WHERE tier IS NULL OR tier NOT IN ('REGULAR','GOLD','VIP');
 ALTER TABLE members
   ADD COLUMN IF NOT EXISTS government_id_type VARCHAR(40) NULL AFTER mobile,
-  ADD COLUMN IF NOT EXISTS government_id_number VARCHAR(120) NULL AFTER government_id_type;
+  ADD COLUMN IF NOT EXISTS government_id_number VARCHAR(120) NULL AFTER government_id_type,
+  MODIFY COLUMN expires_at DATE NULL;
 
 ALTER TABLE members DROP INDEX IF EXISTS uq_members_government_id;
 ALTER TABLE members ADD UNIQUE KEY uq_members_government_id(government_id_type,government_id_number);
