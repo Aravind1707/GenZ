@@ -25,6 +25,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      GENZ_DEPLOYMENT_MODE: staging
       GENZ_DB_HOST: mysql
       GENZ_DB_PORT: 3306
       GENZ_DB_NAME: ${GENZ_TEST_DB_NAME:-genz_os}
