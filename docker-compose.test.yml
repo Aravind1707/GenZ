@@ -1,0 +1,56 @@
+name: genz-cafe-test
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: genz_test_root
+      MYSQL_DATABASE: genz_cafe_test
+      MYSQL_USER: genz_test
+      MYSQL_PASSWORD: genz_test
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - genz_test_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GENZ_DB_HOST: db
+      GENZ_DB_PORT: 3306
+      GENZ_DB_USER: genz_test
+      GENZ_DB_PASSWORD: genz_test
+      GENZ_DB_NAME: genz_cafe_test
+      GENZ_DB_CONNECT_TIMEOUT_MS: 10000
+      GENZ_DB_CONNECT_RETRIES: 30
+      GENZ_DB_CONNECT_RETRY_DELAY_MS: 2000
+      JWT_SECRET: genz-local-test-secret-change-me
+      UPI_ID: test@upi
+      UPI_NAME: GenZ Local Test
+      GENZ_RUN_MIGRATIONS: "true"
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  genz_test_mysql:
