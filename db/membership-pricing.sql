@@ -1,19 +1,10 @@
 USE genz_os;
 
-CREATE TABLE IF NOT EXISTS members (
-  id VARCHAR(64) NOT NULL PRIMARY KEY,
-  name VARCHAR(120) NOT NULL,
-  mobile VARCHAR(20) NOT NULL UNIQUE,
-  tier ENUM('REGULAR','GOLD','VIP') NOT NULL DEFAULT 'REGULAR',
-  expires_at DATE NOT NULL,
-  wallet_balance BIGINT UNSIGNED NOT NULL DEFAULT 0,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at DATETIME(3) NOT NULL,
-  updated_at DATETIME(3) NOT NULL,
-  INDEX idx_members_mobile_active (mobile,active),
-  INDEX idx_members_expiry (expires_at)
-) ENGINE=InnoDB;
-
-INSERT INTO member_price_rules(id,member_tier,category,discount_percent,active)
-VALUES ('RULE-REGULAR-ALL','REGULAR','ALL',0,TRUE),('RULE-GOLD-ALL','GOLD','ALL',10,TRUE),('RULE-VIP-ALL','VIP','ALL',15,TRUE)
-ON DUPLICATE KEY UPDATE discount_percent=VALUES(discount_percent),active=VALUES(active);
+-- Legacy helper SQL kept for reference. The live schema is migration-driven.
+ALTER TABLE members
+  ADD COLUMN IF NOT EXISTS government_id_type VARCHAR(40) NULL AFTER mobile,
+  ADD COLUMN IF NOT EXISTS government_id_number VARCHAR(120) NULL AFTER government_id_type,
+  MODIFY COLUMN expires_at DATE NULL;
+ALTER TABLE members DROP COLUMN IF EXISTS tier;
+ALTER TABLE session_participants DROP COLUMN IF EXISTS member_tier;
+DROP TABLE IF EXISTS member_price_rules;
