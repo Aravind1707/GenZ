@@ -4,7 +4,6 @@ type Member={id:string;name:string;mobile:string;active:boolean};
 type Tx={id:string;type:string;amount:number;method:string;status:string;previousExpiresAt:string|null;newExpiresAt:string|null;createdAt:string};
 type Staff={role:'OWNER'|'MANAGER'};
 const idTypes=[['AADHAAR','Aadhaar'],['PAN','PAN'],['PASSPORT','Passport'],['DRIVING_LICENSE','Driving Licence'],['VOTER_ID','Voter ID'],['OTHER','Other']];
-const methods=['CASH','UPI','CARD','OTHER'];
 export default function MembersPage(){
  const[members,setMembers]=useState<Member[]>([]);const[q,setQ]=useState('');const[form,setForm]=useState({id:'',name:'',mobile:'',governmentIdType:'AADHAAR',governmentIdNumber:''});
  const[selected,setSelected]=useState<Member|null>(null);const[history,setHistory]=useState<Tx[]>([]);const[staff,setStaff]=useState<Staff|null>(null);const[busy,setBusy]=useState(false);const[error,setError]=useState('');
