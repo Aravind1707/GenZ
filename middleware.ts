@@ -1,8 +1,9 @@
 import {NextRequest,NextResponse} from 'next/server';
 
-const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members'];
+const protectedPaths=['/','/sessions','/bookings','/orders','/finance','/kitchen','/staff','/members','/inventory','/stations'];
 const unsafeMethods=new Set(['POST','PUT','PATCH','DELETE']);
 const requestIdPattern=/^[A-Za-z0-9._:-]{1,128}$/;
+const MAX_BODY_BYTES=1_048_576; // 1MB ceiling for any API route without its own tighter limit
 
 function sameOriginRequest(request:NextRequest){
   const origin=request.headers.get('origin')?.trim();
@@ -17,6 +18,15 @@ export function middleware(request:NextRequest){
   const suppliedRequestId=request.headers.get('x-request-id')?.trim();
   const requestId=suppliedRequestId&&requestIdPattern.test(suppliedRequestId)?suppliedRequestId:crypto.randomUUID();
   const path=request.nextUrl.pathname;
+
+  if(path.startsWith('/api/')&&unsafeMethods.has(request.method)){
+    const contentLength=Number(request.headers.get('content-length')||0);
+    if(contentLength>MAX_BODY_BYTES){
+      const response=NextResponse.json({ok:false,error:'Request body too large'},{status:413});
+      response.headers.set('x-request-id',requestId);
+      return response;
+    }
+  }
 
   if(unsafeMethods.has(request.method)&&request.headers.has('origin')&&!sameOriginRequest(request)){
     const response=NextResponse.json({ok:false,error:'Cross-origin request blocked'},{status:403});
@@ -46,4 +56,4 @@ export function middleware(request:NextRequest){
   return response;
 }
 
-export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/api/:path*']};
+export const config={matcher:['/','/sessions/:path*','/bookings/:path*','/orders/:path*','/finance/:path*','/kitchen/:path*','/staff/:path*','/members/:path*','/inventory/:path*','/stations/:path*','/api/:path*']};
