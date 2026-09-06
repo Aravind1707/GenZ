@@ -9,6 +9,43 @@ const required = (name: string) => {
 const globalKey = '__genz_mysql_pool__';
 const globalStore = globalThis as typeof globalThis & { [globalKey]?: Pool };
 
+const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * MySQL DATETIME does not accept JavaScript's ISO `T...Z` representation as a
+ * plain string in all SQL modes. Convert ISO timestamp strings to Date objects
+ * at the DB boundary so every caller gets the same safe serialization path.
+ * Date-only and ordinary application strings are intentionally left untouched.
+ */
+export function normalizeDbValue(value: unknown): unknown {
+  if (typeof value === 'string' && ISO_DATETIME.test(value)) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  if (Array.isArray(value)) return value.map(normalizeDbValue);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, normalizeDbValue(entry)]));
+  }
+  return value;
+}
+
+function normalizeDbArgs(args: unknown[]): unknown[] {
+  if (args.length < 2) return args;
+  return [args[0], normalizeDbValue(args[1])];
+}
+
+function wrapConnection(connection: PoolConnection): PoolConnection {
+  return new Proxy(connection, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === 'query' || prop === 'execute') {
+        return (...args: unknown[]) => (value as (...input: unknown[]) => unknown).apply(target, normalizeDbArgs(args));
+      }
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 function createRealPool(): Pool {
   return mysql.createPool({
     host: required('GENZ_DB_HOST'),
@@ -21,6 +58,7 @@ function createRealPool(): Pool {
     queueLimit: 0,
     enableKeepAlive: true,
     decimalNumbers: true,
+    timezone: 'Z',
   });
 }
 
@@ -35,6 +73,12 @@ export const pool: Pool = new Proxy({} as Pool, {
   get(_target, prop) {
     const real = getPool();
     const value = Reflect.get(real, prop, real);
+    if (prop === 'query' || prop === 'execute') {
+      return (...args: unknown[]) => (value as (...input: unknown[]) => unknown).apply(real, normalizeDbArgs(args));
+    }
+    if (prop === 'getConnection') {
+      return async (...args: unknown[]) => wrapConnection(await real.getConnection(...args));
+    }
     return typeof value === 'function' ? value.bind(real) : value;
   },
 });
