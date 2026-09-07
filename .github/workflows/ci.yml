@@ -94,6 +94,7 @@ jobs:
       GENZ_TEST_DB_PASSWORD: genz_test
       GENZ_TEST_MYSQL_ROOT_PASSWORD: genz_test_root
       GENZ_STAFF_INITIAL_PASSWORD: ChangeMe_Test_Only_123!
+      GENZ_STAGING_DEVELOPER_PASSWORD: ChangeMe_Developer_Test_123!
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -146,6 +147,23 @@ jobs:
       - name: Stop staging stack
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
+  razorpay-test:
+    name: Razorpay Test API + integration
+    if: ${{ github.event_name == 'push' && secrets.GENZ_RAZORPAY_KEY_ID != '' && secrets.GENZ_RAZORPAY_KEY_SECRET != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GENZ_RAZORPAY_KEY_ID: ${{ secrets.GENZ_RAZORPAY_KEY_ID }}
+      GENZ_RAZORPAY_KEY_SECRET: ${{ secrets.GENZ_RAZORPAY_KEY_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+      - run: npm install
+      - name: Require Razorpay Test key
+        run: test "${GENZ_RAZORPAY_KEY_ID#rzp_test_}" != "${GENZ_RAZORPAY_KEY_ID}"
+      - run: npm run test:razorpay
   docker:
     name: Docker build + Compose validation
     runs-on: ubuntu-latest
