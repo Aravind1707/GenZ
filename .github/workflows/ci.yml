@@ -83,6 +83,66 @@ jobs:
       - run: npm run db:migrate
       - run: npm run db:migrate
       - run: npm run test:integration
+  staging:
+    name: Staging destructive + browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GENZ_DEPLOYMENT_MODE: staging
+      GENZ_TEST_DB_NAME: genz_os
+      GENZ_TEST_DB_USER: genz_test
+      GENZ_TEST_DB_PASSWORD: genz_test
+      GENZ_TEST_MYSQL_ROOT_PASSWORD: genz_test_root
+      GENZ_STAFF_INITIAL_PASSWORD: ChangeMe_Test_Only_123!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+      - run: npm install
+      - name: Validate migration and security contracts
+        run: |
+          npm run test:integrity
+          npm run test:qa
+      - name: Build and start isolated staging Compose stack
+        run: docker compose -f docker-compose.test.yml up -d --build
+      - name: Wait for staging health
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3001/api/health > /tmp/genz-health.json; then
+              cat /tmp/genz-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f docker-compose.test.yml ps
+          docker compose -f docker-compose.test.yml logs --no-color app mysql
+          exit 1
+      - name: Run complete destructive staging suite
+        run: docker compose -f docker-compose.test.yml exec -T app npm run test:staging
+      - name: Run browser E2E smoke
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Capture staging diagnostics
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml ps > staging-compose-ps.txt || true
+          docker compose -f docker-compose.test.yml logs --no-color app mysql > staging-compose.log || true
+      - name: Upload staging diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-staging-diagnostics
+          path: |
+            staging-compose-ps.txt
+            staging-compose.log
+            playwright-report/
+          retention-days: 14
+      - name: Stop staging stack
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
   docker:
     name: Docker build + Compose validation
     runs-on: ubuntu-latest
