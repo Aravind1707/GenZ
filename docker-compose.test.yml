@@ -20,7 +20,9 @@ services:
     networks: [genz_test]
 
   app:
-    build: .
+    build:
+      context: .
+      target: staging
     restart: unless-stopped
     init: true
     environment:
