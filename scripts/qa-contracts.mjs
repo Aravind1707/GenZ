@@ -20,7 +20,7 @@ check('membership pricing migration exists', exists('db/migrations/049_membershi
 check('non-expiring membership migration exists', exists('db/migrations/050_membership_transactions_non_expiring.sql'));
 check('equipment/station seed migration exists', exists('db/migrations/051_equipment_and_test_food.sql'));
 check('developer feature migration exists', exists('db/migrations/052_developer_features_and_audit.sql'));
-check('developer console and audit API exist', exists('app/developer/page.tsx') && exists('app/api/developer/features/route.ts') && exists('lib/features.ts'));
+check('developer console and audit API exist', exists('app/(staff)/developer/page.tsx') && exists('app/api/developer/features/route.ts') && exists('lib/features.ts'));
 check('developer testing center API exists and is protected', exists('app/api/developer/testing/route.ts') && has('app/api/developer/testing/route.ts', /staff\.role!==['"]DEVELOPER['"]/));
 check('developer diagnostics cover database, schema and inventory', has('app/api/developer/testing/route.ts', /SELECT 1 AS ok/) && has('app/api/developer/testing/route.ts', /information_schema\.tables/) && has('app/api/developer/testing/route.ts', /on_hand<0 OR reserved<0/));
 check('developer destructive actions are staging-gated', has('app/api/developer/testing/route.ts', /environment\(\)==='staging'/) && has('app/api/developer/testing/route.ts', /destructiveActionsAllowed/));
@@ -31,7 +31,7 @@ check('login sets signed role cookie', has('app/api/staff/auth/route.ts', /resul
 check('middleware verifies role cookie cryptographically', has('middleware.ts', /verifyStaffRole/) && has('middleware.ts', /crypto\.subtle\.verify/) && has('middleware.ts', /GENZ_SESSION_SIGNING_SECRET/));
 check('developer console is developer-only', has('middleware.ts', /path\.startsWith\('\/developer'\).*role==='DEVELOPER'/) && has('app/api/developer/features/route.ts', /staff\.role!==['"]DEVELOPER['"]/));
 check('staff API has owner/developer delegation matrix', has('app/api/admin/staff/route.ts', /actor\.role==='OWNER'&&role!=='MANAGER'/) && has('app/api/admin/staff/route.ts', /actor\.role==='OWNER'&&target\.role!=='MANAGER'/) && has('app/api/admin/staff/route.ts', /STAFF_SELF_PROTECTION/));
-check('staff UI calls canonical admin endpoint', has('app/staff/page.tsx', /fetch\('\/api\/admin\/staff'/));
+check('staff UI calls canonical admin endpoint', has('app/(staff)/staff/page.tsx', /fetch\('\/api\/admin\/staff'/));
 check('admin configuration allows owner/developer', has('app/api/admin/catalog/route.ts', /\['OWNER','DEVELOPER'\]\.includes\(staff\.role\)/));
 check('feature status requires staff session', has('app/api/features/route.ts', /requireStaff/));
 
@@ -58,7 +58,7 @@ check('MySQL boundary normalizes ISO timestamps', has('lib/mysql.ts', /normalize
 check('session datetime writes use DB-boundary normalization', has('lib/store.ts', /startedAt:started\.toISOString\(\)/) && has('lib/mysql.ts', /normalizeDbArgs/));
 check('active memberships allow nullable expiry', has('app/api/sessions/route.ts', /expires_at IS NULL OR expires_at>=CURDATE\(\)/));
 check('no active application membership-tier pricing contract remains', !has('lib/pricing.ts', /member_tier|memberTier/) && !has('app/api/sessions/route.ts', /member_tier|memberTier/));
-check('no stale membership-tier UI contract remains', !has('app/sessions/ParticipantManager.tsx', /memberTier|\.tier|expiresAt/) && !has('app/api/customers/route.ts', /m\.tier|expires_at/));
+check('no stale membership-tier UI contract remains', !has('app/(staff)/sessions/ParticipantManager.tsx', /memberTier|\.tier|expiresAt/) && !has('app/api/customers/route.ts', /m\.tier|expires_at/));
 
 if (failures.length) {
   console.error(`QA contract checks failed (${failures.length}):`);

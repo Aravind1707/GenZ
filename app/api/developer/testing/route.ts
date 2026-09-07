@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {cookies} from 'next/headers';
-import {pool} from '../../../../../lib/mysql';
-import {requireStaff,COOKIE,audit} from '../../../../../lib/staff-auth';
+import {pool} from '../../../../lib/mysql';
+import {requireStaff,COOKIE,audit} from '../../../../lib/staff-auth';
 import type {RowDataPacket} from 'mysql2/promise';
 
 type CheckStatus='PASS'|'WARN'|'FAIL';
