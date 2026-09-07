@@ -18,6 +18,7 @@ export async function resetStagingTestData() {
   assertStaging();
   const like = `${PREFIX}%`;
   return transaction(async c => {
+    await c.execute('DELETE FROM station_agent_commands WHERE idempotency_key LIKE ?', [like]);
     const tables = [
       ['audit_log', 'entity_id'], ['session_payment_refunds', 'session_id'], ['group_settlement_allocations', 'session_id'],
       ['group_settlement_payers', 'settlement_id'], ['group_settlements', 'group_id'], ['booking_deposit_applications', 'session_id'],
@@ -27,7 +28,6 @@ export async function resetStagingTestData() {
       ['orders', 'id'], ['session_participants', 'session_id'], ['session_pause_periods', 'session_id'], ['sessions', 'id'],
     ] as const;
     for (const [table, column] of tables) await c.execute(`DELETE FROM ${table} WHERE ${column} LIKE ?`, [like]);
-    await c.execute('DELETE FROM station_agent_commands WHERE idempotency_key LIKE ?', [like]);
     await c.execute('DELETE FROM inventory_batches WHERE id LIKE ?', [like]);
     await c.execute('DELETE FROM inventory_material_stock WHERE material_id LIKE ?', [like]);
     await c.execute('DELETE FROM menu_item_recipes WHERE id LIKE ?', [like]);
