@@ -11,6 +11,21 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run test:integrity && npm run test:unit && npm run build
 
+# Staging keeps devDependencies so the destructive harness can use tsx.
+# This stage is never used by the production Compose stack.
+FROM build AS staging
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+RUN find . -type f -not -path './node_modules/*' -exec chmod 0444 {} + \
+  && sed -i 's/\r$//' ./docker-entrypoint.sh \
+  && chmod 0555 ./docker-entrypoint.sh \
+  && chmod 0555 .
+USER node
+EXPOSE 3000
+ENTRYPOINT ["./docker-entrypoint.sh"]
+
 FROM node:24.20.0-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
