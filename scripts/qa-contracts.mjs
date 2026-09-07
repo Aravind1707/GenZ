@@ -11,7 +11,8 @@ const has = (file, pattern) => pattern.test(read(file));
 check('package has production build and test scripts', has('package.json', /"build"\s*:\s*"next build"/) && has('package.json', /"test"\s*:\s*"npm run test:integrity && npm run test:qa && npm run test:unit"/));
 check('package has unit/integration/coverage scripts', has('package.json', /"test:unit"/) && has('package.json', /"test:integration"/) && has('package.json', /"test:coverage"/) && has('package.json', /"test:razorpay"/));
 check('staging destructive test script is registered', has('package.json', /"test:staging"\s*:\s*"node --import tsx scripts\/staging-destructive-test\.mjs"/) && exists('scripts/staging-destructive-test.mjs') && exists('lib/staging-test-harness.ts'));
-check('CI has required jobs', has('.github/workflows/ci.yml', /unit-build:/) && has('.github/workflows/ci.yml', /mysql-integration:/) && has('.github/workflows/ci.yml', /docker:/) && has('.github/workflows/ci.yml', /security:/));
+check('browser E2E test is registered', has('package.json', /"test:e2e"\s*:\s*"playwright test"/) && exists('playwright.config.mjs') && exists('tests/e2e/staging-smoke.spec.mjs'));
+check('CI has required jobs', has('.github/workflows/ci.yml', /unit-build:/) && has('.github/workflows/ci.yml', /mysql-integration:/) && has('.github/workflows/ci.yml', /docker:/) && has('.github/workflows/ci.yml', /security:/) && has('.github/workflows/ci.yml', /staging:/));
 
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((file) => /^\d+_.+\.sql$/.test(file));
 const versions = migrations.map((file) => Number(file.split('_', 1)[0]));
@@ -50,6 +51,7 @@ check('admin desk food refund action exists', has('app/api/orders/route.ts', /re
 check('idempotent ordering prevents duplicate checkout', has('lib/food-orders.ts', /client_idempotency_key/) && has('lib/food-orders.ts', /IDEMPOTENCY_CONFLICT/));
 check('inventory negative stock prevented', has('lib/inventory.ts', /INSUFFICIENT_BATCH_STOCK/) && has('lib/inventory.ts', /reserved>=/));
 check('inventory unit/integration suite exists', exists('tests/unit/inventory.test.ts') && exists('scripts/qa-mysql.mjs'));
+check('inventory UI uses canonical backend actions', has('app/(staff)/inventory/stock/page.tsx', /action,'receive'/) && has('app/api/inventory/route.ts', /b\.action==='receive'/) && has('app/(staff)/inventory/receiving/page.tsx', /action:'receive'/) && has('app/api/inventory/materials/route.ts', /action==='receive'/) && has('app/(staff)/inventory/stocktakes/page.tsx', /stocktake-complete/) && has('app/api/inventory/materials/route.ts', /action==='stocktake-complete'/));
 
 check('provider reconciliation exists', exists('lib/payment-provider-reconciliation.ts') && exists('app/api/finance/provider-reconciliation/route.ts'));
 check('daily close controls exist', has('lib/daily-close-report.ts', /approveDailyClose/) && has('lib/daily-close-report.ts', /reopenDailyClose/));
@@ -68,4 +70,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log(`QA contract checks passed: ${migrations.length} migrations and food/inventory/payment/cross-module/developer/staff-security controls.`);
+console.log(`QA contract checks passed: ${migrations.length} migrations and food/inventory/payment/cross-module/developer/staff-security/browser controls.`);
