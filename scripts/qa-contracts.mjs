@@ -10,6 +10,7 @@ const has = (file, pattern) => pattern.test(read(file));
 
 check('package has production build and test scripts', has('package.json', /"build"\s*:\s*"next build"/) && has('package.json', /"test"\s*:\s*"npm run test:integrity && npm run test:qa && npm run test:unit"/));
 check('package has unit/integration/coverage scripts', has('package.json', /"test:unit"/) && has('package.json', /"test:integration"/) && has('package.json', /"test:coverage"/) && has('package.json', /"test:razorpay"/));
+check('staging destructive test script is registered', has('package.json', /"test:staging"\s*:\s*"node --import tsx scripts\/staging-destructive-test\.mjs"/) && exists('scripts/staging-destructive-test.mjs') && exists('lib/staging-test-harness.ts'));
 check('CI has required jobs', has('.github/workflows/ci.yml', /unit-build:/) && has('.github/workflows/ci.yml', /mysql-integration:/) && has('.github/workflows/ci.yml', /docker:/) && has('.github/workflows/ci.yml', /security:/));
 
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((file) => /^\d+_.+\.sql$/.test(file));
@@ -23,9 +24,11 @@ check('developer feature migration exists', exists('db/migrations/052_developer_
 check('developer console and audit API exist', exists('app/(staff)/developer/page.tsx') && exists('app/api/developer/features/route.ts') && exists('lib/features.ts'));
 check('developer testing center API exists and is protected', exists('app/api/developer/testing/route.ts') && has('app/api/developer/testing/route.ts', /staff\.role!==['"]DEVELOPER['"]/));
 check('developer diagnostics cover database, schema and inventory', has('app/api/developer/testing/route.ts', /SELECT 1 AS ok/) && has('app/api/developer/testing/route.ts', /information_schema\.tables/) && has('app/api/developer/testing/route.ts', /on_hand<0 OR reserved<0/));
-check('developer destructive actions are staging-gated', has('app/api/developer/testing/route.ts', /environment\(\)==='staging'/) && has('app/api/developer/testing/route.ts', /destructiveActionsAllowed/));
-check('developer test runs are audited', has('app/api/developer/testing/route.ts', /DEVELOPER_TEST_RUN/) && has('app/api/developer/testing/route.ts', /await audit\(/));
-
+check('developer destructive actions are staging-gated', has('app/api/developer/testing/route.ts', /environment\(\)==='staging'/) && has('app/api/developer/testing/route.ts', /destructiveActionsAllowed/) && has('app/api/developer/testing/route.ts', /STAGING_ONLY/));
+check('developer test runs are audited', has('app/api/developer/testing/route.ts', /DEVELOPER_TEST_RUN/) && has('app/api/developer/testing/route.ts', /DEVELOPER_DESTRUCTIVE_TEST_RUN/) && has('app/api/developer/testing/route.ts', /DEVELOPER_STAGING_RESET/) && has('app/api/developer/testing/route.ts', /await audit\(/));
+check('staging harness hard-blocks production and resets by prefix', has('lib/staging-test-harness.ts', /assertStaging/) && has('lib/staging-test-harness.ts', /GENZ_DEPLOYMENT_MODE/) && has('lib/staging-test-harness.ts', /STAGING_ONLY/) && has('lib/staging-test-harness.ts', /STGTEST-/));
+check('staging harness covers customer/session/settlement lifecycle', has('lib/staging-test-harness.ts', /Create isolated member\/customer/) && has('lib/staging-test-harness.ts', /Customer → session lifecycle/) && has('lib/staging-test-harness.ts', /Session → settlement lifecycle/));
+check('staging harness covers food/inventory/refund/concurrency/agent lifecycle', has('lib/staging-test-harness.ts', /Food order → kitchen → delivery → inventory\/COGS/) && has('lib/staging-test-harness.ts', /Paid order cancellation → refund/) && has('lib/staging-test-harness.ts', /Concurrent station\/session protection/) && has('lib/staging-test-harness.ts', /Station-agent command idempotency/));
 check('staff role signing exists', has('lib/staff-auth.ts', /signStaffRole/) && has('lib/staff-auth.ts', /verifyStaffRole/));
 check('login sets signed role cookie', has('app/api/staff/auth/route.ts', /result\.roleCookie/) && has('app/api/staff/auth/route.ts', /ROLE_COOKIE/));
 check('middleware verifies role cookie cryptographically', has('middleware.ts', /verifyStaffRole/) && has('middleware.ts', /crypto\.subtle\.verify/) && has('middleware.ts', /GENZ_SESSION_SIGNING_SECRET/));
