@@ -149,7 +149,6 @@ jobs:
         run: docker compose -f docker-compose.test.yml down -v
   razorpay-test:
     name: Razorpay Test API + integration
-    if: ${{ github.event_name == 'push' && secrets.GENZ_RAZORPAY_KEY_ID != '' && secrets.GENZ_RAZORPAY_KEY_SECRET != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -161,9 +160,18 @@ jobs:
         with:
           node-version: 24.20.0
       - run: npm install
-      - name: Require Razorpay Test key
-        run: test "${GENZ_RAZORPAY_KEY_ID#rzp_test_}" != "${GENZ_RAZORPAY_KEY_ID}"
-      - run: npm run test:razorpay
+      - name: Run external Razorpay Test API only when Test keys are configured
+        shell: bash
+        run: |
+          if [ -z "$GENZ_RAZORPAY_KEY_ID" ] || [ -z "$GENZ_RAZORPAY_KEY_SECRET" ]; then
+            echo "Razorpay Test keys are not configured in GitHub Actions; external gateway test skipped safely."
+            exit 0
+          fi
+          case "$GENZ_RAZORPAY_KEY_ID" in
+            rzp_test_*) ;;
+            *) echo "Refusing non-Test Razorpay key"; exit 1 ;;
+          esac
+          npm run test:razorpay
   docker:
     name: Docker build + Compose validation
     runs-on: ubuntu-latest
