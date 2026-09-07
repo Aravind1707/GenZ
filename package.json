@@ -15,7 +15,7 @@
     "test:integration":"node scripts/qa-mysql.mjs",
     "test:coverage":"node --import tsx --test --experimental-test-coverage tests/unit/*.test.ts",
     "test:razorpay":"node scripts/test-razorpay.mjs",
-    "test:staging":"node --import tsx scripts/staging-destructive-test.mjs",
+    "test:staging":"node --experimental-strip-types scripts/staging-destructive-test.mjs",
     "test:e2e":"playwright test",
     "db:migrate":"node scripts/migrate.mjs",
     "station:agent":"node scripts/station-agent.mjs"
