@@ -120,11 +120,14 @@ jobs:
           docker compose -f docker-compose.test.yml logs --no-color app mysql
           exit 1
       - name: Run complete destructive staging suite
-        run: docker compose -f docker-compose.test.yml exec -T app npm run test:staging
+        run: docker compose -f docker-compose.test.yml exec -T app npm run test:staging -- --keep-data
       - name: Run browser E2E smoke
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: Reset staging test data
+        if: always()
+        run: docker compose -f docker-compose.test.yml exec -T app npm run test:staging -- --reset-only || true
       - name: Capture staging diagnostics
         if: always()
         run: |
