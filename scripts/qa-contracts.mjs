@@ -10,7 +10,7 @@ const has = (file, pattern) => pattern.test(read(file));
 
 check('package has production build and test scripts', has('package.json', /"build"\s*:\s*"next build"/) && has('package.json', /"test"\s*:\s*"npm run test:integrity && npm run test:qa && npm run test:unit"/));
 check('package has unit/integration/coverage scripts', has('package.json', /"test:unit"/) && has('package.json', /"test:integration"/) && has('package.json', /"test:coverage"/) && has('package.json', /"test:razorpay"/));
-check('staging destructive test script is registered', has('package.json', /"test:staging"\s*:\s*"node --experimental-strip-types scripts\/staging-destructive-test\.mjs"/) && exists('scripts/staging-destructive-test.mjs') && exists('lib/staging-test-harness.ts'));
+check('staging destructive test script is registered', has('package.json', /"test:staging"\s*:\s*"node --import tsx scripts\/staging-destructive-test\.mjs"/) && exists('scripts/staging-destructive-test.mjs') && exists('lib/staging-test-harness.ts') && has('Dockerfile', /FROM build AS staging/));
 check('browser E2E test is registered', has('package.json', /"test:e2e"\s*:\s*"playwright test"/) && exists('playwright.config.mjs') && exists('tests/e2e/staging-smoke.spec.mjs'));
 check('CI has required jobs', has('.github/workflows/ci.yml', /unit-build:/) && has('.github/workflows/ci.yml', /mysql-integration:/) && has('.github/workflows/ci.yml', /docker:/) && has('.github/workflows/ci.yml', /security:/) && has('.github/workflows/ci.yml', /staging:/));
 
