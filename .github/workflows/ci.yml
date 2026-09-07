@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.20.0
@@ -75,7 +75,7 @@ jobs:
       GENZ_DB_PASSWORD: genz_ci_password
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.20.0
@@ -96,7 +96,7 @@ jobs:
       GENZ_STAFF_INITIAL_PASSWORD: ChangeMe_Test_Only_123!
       GENZ_STAGING_DEVELOPER_PASSWORD: ChangeMe_Developer_Test_123!
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.20.0
@@ -155,7 +155,7 @@ jobs:
       GENZ_RAZORPAY_KEY_ID: ${{ secrets.GENZ_RAZORPAY_KEY_ID }}
       GENZ_RAZORPAY_KEY_SECRET: ${{ secrets.GENZ_RAZORPAY_KEY_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.20.0
@@ -177,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate Compose configuration
         env:
           GENZ_DB_PASSWORD: genz_ci_password
@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 24.20.0
