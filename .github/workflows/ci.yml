@@ -29,7 +29,7 @@ jobs:
           exit "$status"
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: genz-unit-test-diagnostics
           path: unit-test.log
@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p coverage && npm run test:coverage > coverage/unit-coverage.txt 2>&1
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: genz-unit-coverage
           path: coverage/unit-coverage.txt
@@ -132,7 +132,7 @@ jobs:
           docker compose -f docker-compose.test.yml logs --no-color app mysql > staging-compose.log || true
       - name: Upload staging diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: genz-staging-diagnostics
           path: |
@@ -183,7 +183,7 @@ jobs:
           exit "$status"
       - name: Upload security diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: genz-security-diagnostics
           path: security/
